@@ -1,9 +1,7 @@
 import express from "express";
 import multer from "multer";
-import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import pool from "../config/db.js";
-import { s3, BUCKET } from "../config/storage.js";
+import { uploadFile, getSignedDownloadUrl, deleteFile } from "../config/storage.js";
 import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -22,26 +20,6 @@ const upload = multer({
   },
 });
 
-// Upload a single file buffer to R2/S3, return the object key
-async function uploadToStorage(buffer, filename, mimetype, requestId) {
-  const key = `bprm-requests/${requestId}/${Date.now()}-${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-  await s3.send(new PutObjectCommand({
-    Bucket: BUCKET,
-    Key: key,
-    Body: buffer,
-    ContentType: mimetype,
-  }));
-  return key;
-}
-
-// Generate a presigned download URL valid for 15 minutes
-async function getPresignedUrl(s3Key) {
-  return getSignedUrl(
-    s3,
-    new GetObjectCommand({ Bucket: BUCKET, Key: s3Key }),
-    { expiresIn: 900 }
-  );
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -101,10 +79,10 @@ router.post("/", authenticateToken, upload.array("attachments", 10), async (req,
 
     const request = reqResult.rows[0];
 
-    // Upload each file to R2/S3, store only the key in DB
+    // Upload each file to Supabase Storage, store only the path key in DB
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        const key = await uploadToStorage(file.buffer, file.originalname, file.mimetype, request.id);
+        const key = await uploadFile(file.buffer, file.originalname, file.mimetype, request.id);
         uploadedKeys.push(key);
         await client.query(
           "INSERT INTO request_attachments (request_id, original_name, mimetype, size, s3_key) VALUES ($1,$2,$3,$4,$5)",
@@ -126,9 +104,9 @@ router.post("/", authenticateToken, upload.array("attachments", 10), async (req,
   } catch (error) {
     await client.query("ROLLBACK");
 
-    // Clean up any S3 objects that were already uploaded before the failure
+    // Clean up any Supabase Storage objects uploaded before the failure
     for (const key of uploadedKeys) {
-      s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key })).catch(() => {});
+      deleteFile(key).catch(() => {});
     }
 
     console.error("Submit request error:", error);
@@ -185,7 +163,7 @@ router.get("/attachment/:id", authenticateToken, async (req, res) => {
     }
 
     const { s3_key, original_name } = result.rows[0];
-    const url = await getPresignedUrl(s3_key);
+    const url = await getSignedDownloadUrl(s3_key);
 
     res.json({ url, filename: original_name });
   } catch (error) {

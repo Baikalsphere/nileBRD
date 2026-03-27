@@ -1,26 +1,37 @@
-import { S3Client } from "@aws-sdk/client-s3";
+import { createClient } from "@supabase/supabase-js";
 
-// Works with Cloudflare R2 (free tier) or AWS S3 — swap via env vars only.
-//
-// Cloudflare R2 setup:
-//   1. cloudflare.com → R2 → Create bucket (name = S3_BUCKET)
-//   2. R2 → Manage R2 API Tokens → Create token (Object Read & Write)
-//   3. Copy Account ID from R2 overview page
-//   S3_ENDPOINT = https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com
-//   S3_REGION   = auto
-//
-// AWS S3 setup:
-//   Leave S3_ENDPOINT unset (or empty). Set S3_REGION to your bucket region.
+// Uses the service_role key (not anon key) so it can bypass RLS and access private buckets.
+// Bucket should be set to PRIVATE in Supabase dashboard — access is controlled via signed URLs.
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
+);
 
-export const s3 = new S3Client({
-  region: process.env.S3_REGION || "auto",
-  endpoint: process.env.S3_ENDPOINT || undefined,
-  credentials: {
-    accessKeyId: process.env.S3_ACCESS_KEY_ID,
-    secretAccessKey: process.env.S3_SECRET_ACCESS_KEY,
-  },
-  // Required for R2 path-style URLs
-  forcePathStyle: process.env.S3_ENDPOINT ? true : false,
-});
+export const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "bprm-attachments";
 
-export const BUCKET = process.env.S3_BUCKET;
+// Upload a file buffer → returns the storage path (key)
+export async function uploadFile(buffer, filename, mimetype, requestId) {
+  const key = `requests/${requestId}/${Date.now()}-${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(key, buffer, { contentType: mimetype, upsert: false });
+
+  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+  return key;
+}
+
+// Generate a signed download URL valid for 15 minutes
+export async function getSignedDownloadUrl(key) {
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(key, 900);
+
+  if (error) throw new Error(`Failed to create signed URL: ${error.message}`);
+  return data.signedUrl;
+}
+
+// Delete a file (used for rollback on failed request submission)
+export async function deleteFile(key) {
+  await supabase.storage.from(BUCKET).remove([key]);
+}
