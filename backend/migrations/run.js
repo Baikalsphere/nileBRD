@@ -86,6 +86,16 @@ CREATE TABLE IF NOT EXISTS request_messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_request ON request_messages(request_id, created_at);
+
+-- Read receipts: track last-read position per user per request
+CREATE TABLE IF NOT EXISTS request_read_receipts (
+  user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  request_id INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  last_read_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, request_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_read_receipts ON request_read_receipts(user_id, request_id);
 `;
 
 async function migrate() {

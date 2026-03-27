@@ -4,30 +4,11 @@ import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router();
 
-function buildRequestsQuery(userIdField, partnerField, partnerAlias) {
-  return {
-    text: `
-      SELECT * FROM (
-        SELECT
-          r.id, r.req_number, r.title, r.priority, r.category, r.status,
-          u.name  AS ${partnerAlias}_name,
-          u.email AS ${partnerAlias}_email,
-          (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id)::int AS message_count,
-          (SELECT m2.message   FROM request_messages m2 WHERE m2.request_id = r.id ORDER BY m2.created_at DESC LIMIT 1) AS last_message,
-          (SELECT m3.created_at FROM request_messages m3 WHERE m3.request_id = r.id ORDER BY m3.created_at DESC LIMIT 1) AS last_message_at
-        FROM requests r
-        LEFT JOIN users u ON u.id = r.${partnerField}
-        WHERE r.${userIdField} = $1 AND r.status != 'Closed'
-      ) sub
-      ORDER BY COALESCE(last_message_at, (SELECT created_at FROM requests WHERE id = sub.id)) DESC
-    `,
-  };
-}
-
 // GET /api/discussions/requests
 router.get("/requests", authenticateToken, async (req, res) => {
   try {
     let text, values;
+    const userId = req.user.id;
 
     if (req.user.role === "stakeholder") {
       text = `
@@ -38,9 +19,17 @@ router.get("/requests", authenticateToken, async (req, res) => {
             ba.email AS ba_email,
             sh.name  AS stakeholder_name,
             sh.email AS stakeholder_email,
-            (SELECT COUNT(*) FROM request_messages m  WHERE m.request_id  = r.id)::int AS message_count,
+            (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id)::int AS total_messages,
             (SELECT m2.message    FROM request_messages m2 WHERE m2.request_id = r.id ORDER BY m2.created_at DESC LIMIT 1) AS last_message,
             (SELECT m3.created_at FROM request_messages m3 WHERE m3.request_id = r.id ORDER BY m3.created_at DESC LIMIT 1) AS last_message_at,
+            (
+              SELECT COUNT(*) FROM request_messages m4
+              WHERE m4.request_id = r.id
+                AND m4.created_at > COALESCE(
+                  (SELECT rr.last_read_at FROM request_read_receipts rr WHERE rr.user_id = $1 AND rr.request_id = r.id),
+                  '1970-01-01'
+                )
+            )::int AS unread_count,
             r.created_at AS req_created_at
           FROM requests r
           LEFT JOIN users ba ON ba.id = r.assigned_ba_id
@@ -49,25 +38,33 @@ router.get("/requests", authenticateToken, async (req, res) => {
         ) sub
         ORDER BY COALESCE(sub.last_message_at, sub.req_created_at) DESC
       `;
-      values = [];
+      values = [userId];
     } else if (req.user.role === "ba") {
       text = `
         SELECT * FROM (
           SELECT
             r.id, r.req_number, r.title, r.priority, r.category, r.status,
-            u.name  AS stakeholder_name,
-            u.email AS stakeholder_email,
-            (SELECT COUNT(*) FROM request_messages m  WHERE m.request_id  = r.id)::int AS message_count,
+            sh.name  AS stakeholder_name,
+            sh.email AS stakeholder_email,
+            (SELECT COUNT(*) FROM request_messages m WHERE m.request_id = r.id)::int AS total_messages,
             (SELECT m2.message    FROM request_messages m2 WHERE m2.request_id = r.id ORDER BY m2.created_at DESC LIMIT 1) AS last_message,
             (SELECT m3.created_at FROM request_messages m3 WHERE m3.request_id = r.id ORDER BY m3.created_at DESC LIMIT 1) AS last_message_at,
+            (
+              SELECT COUNT(*) FROM request_messages m4
+              WHERE m4.request_id = r.id
+                AND m4.created_at > COALESCE(
+                  (SELECT rr.last_read_at FROM request_read_receipts rr WHERE rr.user_id = $1 AND rr.request_id = r.id),
+                  '1970-01-01'
+                )
+            )::int AS unread_count,
             r.created_at AS req_created_at
           FROM requests r
-          LEFT JOIN users u ON u.id = r.stakeholder_id
+          LEFT JOIN users sh ON sh.id = r.stakeholder_id
           WHERE r.assigned_ba_id = $1 AND r.status != 'Closed'
         ) sub
         ORDER BY COALESCE(sub.last_message_at, sub.req_created_at) DESC
       `;
-      values = [req.user.id];
+      values = [userId];
     } else {
       return res.json({ requests: [] });
     }
@@ -77,6 +74,23 @@ router.get("/requests", authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("Discussions requests error:", error);
     res.status(500).json({ message: "Error fetching requests", detail: error.message });
+  }
+});
+
+// POST /api/discussions/mark-read/:requestId
+router.post("/mark-read/:requestId", authenticateToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    await pool.query(
+      `INSERT INTO request_read_receipts (user_id, request_id, last_read_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id, request_id) DO UPDATE SET last_read_at = NOW()`,
+      [req.user.id, requestId]
+    );
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Mark-read error:", error);
+    res.status(500).json({ message: "Error marking as read" });
   }
 });
 

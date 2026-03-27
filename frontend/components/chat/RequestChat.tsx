@@ -110,6 +110,9 @@ export function RequestChat({ request, currentUserId, currentUserName, onBack }:
     socket.on("disconnect", () => setConnected(false));
     socket.on("new-message", (msg: Message) => {
       setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]);
+      // Auto mark-read since the chat is open
+      const t = localStorage.getItem("authToken");
+      if (t) fetch(`${API}/api/discussions/mark-read/${request.id}`, { method: "POST", headers: { Authorization: `Bearer ${t}` } });
     });
     return () => { socket.emit("leave-room", { requestId: request.id }); socket.disconnect(); };
   }, [request.id]);

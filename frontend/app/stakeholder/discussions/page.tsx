@@ -17,7 +17,7 @@ interface DiscussionRequest {
   ba_email: string | null;
   stakeholder_name: string | null;
   stakeholder_email: string | null;
-  message_count: string;
+  unread_count: number;
   last_message: string | null;
   last_message_at: string | null;
 }
@@ -130,7 +130,7 @@ export default function StakeholderDiscussionsPage() {
             </div>
           ) : filtered.map((req) => {
             const isActive  = selected?.id === req.id;
-            const unread    = parseInt(req.message_count);
+            const unread    = req.unread_count;
             const isOwn     = req.stakeholder_email === currentUser.email;
             const initials  = getInitials(req.stakeholder_name, req.stakeholder_email);
             const avatarBg  = avatarPalette[req.id % avatarPalette.length];
@@ -139,7 +139,9 @@ export default function StakeholderDiscussionsPage() {
                 key={req.id}
                 onClick={() => {
                   setSelected(req);
-                  setRequests(prev => prev.map(r => r.id === req.id ? { ...r, message_count: "0" } : r));
+                  setRequests(prev => prev.map(r => r.id === req.id ? { ...r, unread_count: 0 } : r));
+                  const token = localStorage.getItem("authToken");
+                  if (token) fetch(`${API}/api/discussions/mark-read/${req.id}`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
                 }}
                 className={`w-full px-3 py-2.5 text-left transition-colors duration-150 relative ${
                   isActive ? "bg-blue-50" : "hover:bg-slate-50"
