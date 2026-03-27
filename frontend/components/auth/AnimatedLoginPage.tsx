@@ -337,7 +337,7 @@ function LoginPage() {
             <div className="size-8 rounded-lg bg-primary-foreground/10 backdrop-blur-sm flex items-center justify-center">
               <Sparkles className="size-4" />
             </div>
-            <span>BRM Portal</span>
+            <span>BPRM PORTAL</span>
           </div>
         </div>
 
@@ -533,7 +533,7 @@ function LoginPage() {
             <div className="size-10 rounded-lg bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center shadow-lg">
               <Sparkles className="size-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">BRM Portal</span>
+            <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">BPRM PORTAL</span>
           </div>
 
           {/* Header */}
