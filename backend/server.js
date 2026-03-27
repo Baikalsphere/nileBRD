@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
+import requestRoutes from "./routes/requests.js";
 import pool from "./config/db.js";
 
 const app = express();
@@ -18,6 +19,7 @@ app.use(express.json());
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/requests", requestRoutes);
 
 // Health check
 app.get("/health", async (req, res) => {

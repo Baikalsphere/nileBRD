@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   AlertCircle,
   ArrowRight,
+  Bot,
+  Briefcase,
   CheckCircle2,
-  ChevronDown,
   Clock,
   FileText,
   Flame,
@@ -15,6 +16,7 @@ import {
   Tag,
   TrendingUp,
   Upload,
+  User,
   X,
   Zap,
 } from "lucide-react";
@@ -24,79 +26,54 @@ import { Card } from "@/components/ui/Card";
 
 type Priority = "Low" | "Medium" | "High" | "Critical";
 type Category = "Process Improvement" | "System Issue" | "New Feature" | "Compliance" | "Cost Reduction" | "Other";
+type AssignMode = "automatic" | "manual";
 
-type Problem = {
+type BAUser = { id: number; email: string; name: string | null };
+
+type Submission = {
   id: string;
+  req_number: string;
   title: string;
-  description: string;
   priority: Priority;
   category: Category;
-  attachments: string[];
+  assignedBa: { email: string; name: string | null } | null;
   submittedAt: Date;
 };
 
+const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
+
 const priorityConfig: Record<Priority, { color: string; bg: string; border: string; icon: React.ReactNode; glow: string }> = {
-  Low: {
-    color: "text-emerald-600",
-    bg: "bg-emerald-50",
-    border: "border-emerald-200",
-    icon: <TrendingUp className="size-3.5" />,
-    glow: "shadow-emerald-100",
-  },
-  Medium: {
-    color: "text-amber-600",
-    bg: "bg-amber-50",
-    border: "border-amber-200",
-    icon: <Clock className="size-3.5" />,
-    glow: "shadow-amber-100",
-  },
-  High: {
-    color: "text-orange-600",
-    bg: "bg-orange-50",
-    border: "border-orange-200",
-    icon: <Zap className="size-3.5" />,
-    glow: "shadow-orange-100",
-  },
-  Critical: {
-    color: "text-rose-600",
-    bg: "bg-rose-50",
-    border: "border-rose-200",
-    icon: <Flame className="size-3.5" />,
-    glow: "shadow-rose-100",
-  },
+  Low:      { color: "text-emerald-600", bg: "bg-emerald-50",  border: "border-emerald-200", icon: <TrendingUp className="size-3.5" />, glow: "shadow-emerald-100" },
+  Medium:   { color: "text-amber-600",   bg: "bg-amber-50",    border: "border-amber-200",   icon: <Clock className="size-3.5" />,     glow: "shadow-amber-100"   },
+  High:     { color: "text-orange-600",  bg: "bg-orange-50",   border: "border-orange-200",  icon: <Zap className="size-3.5" />,       glow: "shadow-orange-100"  },
+  Critical: { color: "text-rose-600",    bg: "bg-rose-50",     border: "border-rose-200",    icon: <Flame className="size-3.5" />,     glow: "shadow-rose-100"    },
 };
 
 const categoryConfig: Record<Category, { emoji: string; description: string }> = {
   "Process Improvement": { emoji: "⚙️", description: "Streamline workflows and operations" },
-  "System Issue": { emoji: "🔧", description: "Technical bugs or system failures" },
-  "New Feature": { emoji: "✨", description: "Request new capabilities or tools" },
-  Compliance: { emoji: "🛡️", description: "Regulatory or policy requirements" },
-  "Cost Reduction": { emoji: "💰", description: "Reduce expenses or optimize spend" },
-  Other: { emoji: "📋", description: "Other business needs" },
+  "System Issue":        { emoji: "🔧", description: "Technical bugs or system failures" },
+  "New Feature":         { emoji: "✨", description: "Request new capabilities or tools" },
+  Compliance:            { emoji: "🛡️", description: "Regulatory or policy requirements" },
+  "Cost Reduction":      { emoji: "💰", description: "Reduce expenses or optimize spend" },
+  Other:                 { emoji: "📋", description: "Other business needs" },
 };
 
-const steps = ["Details", "Category & Priority", "Attachments", "Review"];
+const steps = ["Details", "Category & Priority", "Attachments", "Review", "Assign BA"];
 
 function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
-    <div className="flex items-center gap-0">
+    <div className="flex items-center">
       {Array.from({ length: total }).map((_, i) => (
         <div key={i} className="flex items-center">
-          <div
-            className={`flex size-8 items-center justify-center rounded-full text-xs font-bold transition-all duration-500 ${
-              i < current
-                ? "bg-blue-600 text-white shadow-md shadow-blue-200"
-                : i === current
-                ? "bg-blue-600 text-white ring-4 ring-blue-100 shadow-lg shadow-blue-200"
-                : "bg-slate-100 text-slate-400"
-            }`}
-          >
+          <div className={`flex size-8 items-center justify-center rounded-full text-xs font-bold transition-all duration-500 ${
+            i < current  ? "bg-blue-600 text-white shadow-md shadow-blue-200"
+            : i === current ? "bg-blue-600 text-white ring-4 ring-blue-100 shadow-lg shadow-blue-200"
+            : "bg-slate-100 text-slate-400"
+          }`}>
             {i < current ? <CheckCircle2 className="size-4" /> : i + 1}
           </div>
           {i < total - 1 && (
-            <div
-              className={`h-0.5 w-10 transition-all duration-700 ${i < current ? "bg-blue-600" : "bg-slate-200"}`}
-            />
+            <div className={`h-0.5 w-8 transition-all duration-700 ${i < current ? "bg-blue-600" : "bg-slate-200"}`} />
           )}
         </div>
       ))}
@@ -107,42 +84,29 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
 function CharCounter({ value, max }: { value: string; max: number }) {
   const pct = (value.length / max) * 100;
   const color = pct > 90 ? "text-rose-500" : pct > 70 ? "text-amber-500" : "text-slate-400";
-  return (
-    <span className={`text-xs transition-colors duration-300 ${color}`}>
-      {value.length}/{max}
-    </span>
-  );
+  return <span className={`text-xs transition-colors duration-300 ${color}`}>{value.length}/{max}</span>;
 }
 
-function SubmissionCard({ item, index }: { item: Problem; index: number }) {
+function SubmissionCard({ item }: { item: Submission }) {
   const p = priorityConfig[item.priority];
   return (
-    <div
-      className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
-      style={{ animationDelay: `${index * 80}ms` }}
-    >
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
       <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
+          <p className="text-xs font-mono text-blue-500">{item.req_number}</p>
           <p className="truncate text-sm font-semibold text-slate-800">{item.title}</p>
-          <p className="mt-0.5 line-clamp-1 text-xs text-slate-500">{item.description}</p>
         </div>
         <div className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${p.color} ${p.bg} ${p.border}`}>
-          {p.icon}
-          {item.priority}
+          {p.icon} {item.priority}
         </div>
       </div>
-      <div className="mt-3 flex items-center gap-3">
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
-          {categoryConfig[item.category].emoji} {item.category}
-        </span>
-        <span className="text-xs text-slate-400">
-          {item.submittedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
-        {item.attachments.length > 0 && (
-          <span className="flex items-center gap-0.5 text-xs text-slate-400">
-            <Paperclip className="size-3" />
-            {item.attachments.length}
+      <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+        <span>{categoryConfig[item.category].emoji} {item.category}</span>
+        {item.assignedBa && (
+          <span className="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-purple-600">
+            <Briefcase className="size-3" />
+            {item.assignedBa.name || item.assignedBa.email}
           </span>
         )}
       </div>
@@ -154,16 +118,25 @@ export default function SubmitProblemPage() {
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [items, setItems] = useState<Problem[]>([]);
-  const [attachmentInput, setAttachmentInput] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [lastResult, setLastResult] = useState<{ reqNumber: string; assignedBa: { email: string; name: string | null } | null } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [form, setForm] = useState<Omit<Problem, "id" | "submittedAt">>({
+  // Step 2 — real File objects
+  const [files, setFiles] = useState<File[]>([]);
+
+  // Step 4 — BA assignment
+  const [assignMode, setAssignMode] = useState<AssignMode>("automatic");
+  const [baList, setBaList] = useState<BAUser[]>([]);
+  const [baListLoading, setBaListLoading] = useState(false);
+  const [selectedBaId, setSelectedBaId] = useState<number | null>(null);
+
+  const [form, setForm] = useState({
     title: "",
     description: "",
-    priority: "Medium",
-    category: "Process Improvement",
-    attachments: [],
+    priority: "Medium" as Priority,
+    category: "Process Improvement" as Category,
   });
 
   const canProceed = [
@@ -171,43 +144,104 @@ export default function SubmitProblemPage() {
     true,
     true,
     true,
+    assignMode === "automatic" || selectedBaId !== null,
   ];
 
-  const addAttachment = () => {
-    if (!attachmentInput.trim()) return;
-    setForm((p) => ({ ...p, attachments: [...p.attachments, attachmentInput.trim()] }));
-    setAttachmentInput("");
+  // Fetch BA list when reaching step 4
+  useEffect(() => {
+    if (step === 4 && assignMode === "manual" && baList.length === 0) {
+      loadBaList();
+    }
+  }, [step, assignMode]);
+
+  const loadBaList = async () => {
+    setBaListLoading(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`${API}/api/requests/ba-list`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBaList(data.bas);
+      }
+    } catch {}
+    setBaListLoading(false);
   };
 
-  const removeAttachment = (idx: number) => {
-    setForm((p) => ({ ...p, attachments: p.attachments.filter((_, i) => i !== idx) }));
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    const incoming = Array.from(e.target.files);
+    setFiles((prev) => {
+      const existing = new Set(prev.map((f) => f.name));
+      return [...prev, ...incoming.filter((f) => !existing.has(f.name))];
+    });
+    e.target.value = "";
   };
 
-  const handleSubmit = () => {
+  const removeFile = (idx: number) => setFiles((prev) => prev.filter((_, i) => i !== idx));
+
+  const formatSize = (bytes: number) => bytes < 1024 * 1024
+    ? `${(bytes / 1024).toFixed(0)} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+  const handleSubmit = async () => {
     setIsSubmitting(true);
-    setTimeout(() => {
-      setItems((prev) => [
-        {
-          ...form,
-          id: `REQ-${1100 + prev.length + 1}`,
-          submittedAt: new Date(),
-        },
-        ...prev,
-      ]);
+    setSubmitError("");
+    try {
+      const token = localStorage.getItem("authToken");
+      const fd = new FormData();
+      fd.append("title", form.title);
+      fd.append("description", form.description);
+      fd.append("priority", form.priority);
+      fd.append("category", form.category);
+      fd.append("assignment_mode", assignMode);
+      if (assignMode === "manual" && selectedBaId) {
+        fd.append("assigned_ba_id", String(selectedBaId));
+      }
+      files.forEach((f) => fd.append("attachments", f));
+
+      const res = await fetch(`${API}/api/requests`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Submission failed");
+
+      setLastResult({ reqNumber: data.request.req_number, assignedBa: data.assignedBa });
+      setSubmissions((prev) => [{
+        id: String(data.request.id),
+        req_number: data.request.req_number,
+        title: data.request.title,
+        priority: data.request.priority,
+        category: data.request.category,
+        assignedBa: data.assignedBa,
+        submittedAt: new Date(),
+      }, ...prev]);
       setSubmitted(true);
+    } catch (err: unknown) {
+      setSubmitError(err instanceof Error ? err.message : "Submission failed");
+    } finally {
       setIsSubmitting(false);
-    }, 1800);
+    }
   };
 
   const resetForm = () => {
-    setForm({ title: "", description: "", priority: "Medium", category: "Process Improvement", attachments: [] });
+    setForm({ title: "", description: "", priority: "Medium", category: "Process Improvement" });
+    setFiles([]);
+    setAssignMode("automatic");
+    setSelectedBaId(null);
     setStep(0);
     setSubmitted(false);
+    setSubmitError("");
+    setLastResult(null);
   };
 
   return (
     <div className="space-y-6">
-      {/* Hero header */}
+      {/* Hero */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 p-7 text-white shadow-xl shadow-blue-200">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(255,255,255,0.15),_transparent_60%)]" />
         <div className="absolute -right-8 -top-8 size-48 rounded-full bg-white/5 blur-2xl" />
@@ -223,30 +257,29 @@ export default function SubmitProblemPage() {
               </span>
             </div>
             <h1 className="text-2xl font-bold tracking-tight">Submit a Business Request</h1>
-            <p className="mt-1 text-sm text-blue-100">
-              Describe your problem clearly — our BA team will review and assign it.
-            </p>
+            <p className="mt-1 text-sm text-blue-100">Describe your problem clearly — our BA team will review and assign it.</p>
           </div>
           <div className="hidden flex-col items-end gap-1 text-right md:flex">
-            <span className="text-xs text-blue-200">Total Submitted</span>
-            <span className="text-4xl font-bold tabular-nums">{items.length}</span>
+            <span className="text-xs text-blue-200">Submitted This Session</span>
+            <span className="text-4xl font-bold tabular-nums">{submissions.length}</span>
           </div>
         </div>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.5fr,1fr]">
-        {/* Form card */}
         <Card className="overflow-hidden !p-0">
           {/* Step header */}
           <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-4">
             <div className="flex items-center justify-between">
               <StepIndicator current={step} total={steps.length} />
-              <span className="text-xs font-medium text-slate-500">Step {step + 1} of {steps.length}: {steps[step]}</span>
+              <span className="text-xs font-medium text-slate-500">
+                Step {step + 1} of {steps.length}: <span className="text-slate-700">{steps[step]}</span>
+              </span>
             </div>
           </div>
 
           <div className="p-6">
-            {/* Success state */}
+            {/* ── Success ── */}
             {submitted ? (
               <div className="flex flex-col items-center py-10 text-center">
                 <div className="relative mb-5">
@@ -259,13 +292,25 @@ export default function SubmitProblemPage() {
                 </div>
                 <h3 className="text-xl font-bold text-slate-900">Request Submitted!</h3>
                 <p className="mt-2 max-w-sm text-sm text-slate-500">
-                  Your business problem has been logged as <span className="font-semibold text-blue-600">REQ-{1099 + items.length}</span>. A Business Analyst will be assigned shortly.
+                  Logged as <span className="font-semibold text-blue-600">{lastResult?.reqNumber}</span>
+                  {lastResult?.assignedBa
+                    ? ` and assigned to ${lastResult.assignedBa.name || lastResult.assignedBa.email}.`
+                    : " — no BA available yet, will be assigned soon."}
                 </p>
-                <div className="mt-5 flex items-center gap-3 rounded-2xl bg-slate-50 px-5 py-3">
-                  <div className="text-left">
-                    <p className="text-xs text-slate-500">Expected Response</p>
-                    <p className="text-sm font-semibold text-slate-800">Within 2 business days</p>
+                {lastResult?.assignedBa && (
+                  <div className="mt-4 flex items-center gap-2 rounded-2xl bg-purple-50 border border-purple-100 px-5 py-3">
+                    <Briefcase className="size-4 text-purple-500" />
+                    <div className="text-left">
+                      <p className="text-xs text-purple-500">Assigned BA</p>
+                      <p className="text-sm font-semibold text-purple-800">
+                        {lastResult.assignedBa.name || lastResult.assignedBa.email}
+                      </p>
+                    </div>
                   </div>
+                )}
+                <div className="mt-3 rounded-2xl bg-slate-50 px-5 py-3">
+                  <p className="text-xs text-slate-500">Expected Response</p>
+                  <p className="text-sm font-semibold text-slate-800">Within 2 business days</p>
                 </div>
                 <Button variant="outline" className="mt-6" onClick={resetForm}>
                   Submit Another Request
@@ -273,7 +318,8 @@ export default function SubmitProblemPage() {
               </div>
             ) : (
               <div className="space-y-5">
-                {/* Step 0: Details */}
+
+                {/* ── Step 0: Details ── */}
                 {step === 0 && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                     <div>
@@ -286,7 +332,7 @@ export default function SubmitProblemPage() {
                         placeholder="e.g. Manual invoice processing causing delays"
                         value={form.title}
                         onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                       {form.title.trim().length > 0 && form.title.trim().length < 5 && (
                         <p className="mt-1 flex items-center gap-1 text-xs text-rose-500">
@@ -302,10 +348,10 @@ export default function SubmitProblemPage() {
                       <textarea
                         rows={6}
                         maxLength={1000}
-                        placeholder="Describe the problem in detail. Include: what's happening, impact on operations, how often it occurs, and any workarounds currently in use..."
+                        placeholder="Describe the problem in detail — what's happening, impact, frequency, workarounds..."
                         value={form.description}
                         onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                        className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                        className="w-full resize-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
                       />
                       {form.description.trim().length > 0 && form.description.trim().length < 20 && (
                         <p className="mt-1 flex items-center gap-1 text-xs text-rose-500">
@@ -316,31 +362,18 @@ export default function SubmitProblemPage() {
                   </div>
                 )}
 
-                {/* Step 1: Category & Priority */}
+                {/* ── Step 1: Category & Priority ── */}
                 {step === 1 && (
                   <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-slate-700">Request Category</label>
                       <div className="grid grid-cols-2 gap-2.5">
                         {(Object.keys(categoryConfig) as Category[]).map((cat) => (
-                          <button
-                            key={cat}
-                            onClick={() => setForm((p) => ({ ...p, category: cat }))}
-                            className={`group relative rounded-xl border-2 p-3 text-left transition-all duration-200 ${
-                              form.category === cat
-                                ? "border-blue-500 bg-blue-50 shadow-md shadow-blue-100"
-                                : "border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50"
-                            }`}
-                          >
-                            {form.category === cat && (
-                              <div className="absolute right-2 top-2">
-                                <CheckCircle2 className="size-4 text-blue-500" />
-                              </div>
-                            )}
+                          <button key={cat} onClick={() => setForm((p) => ({ ...p, category: cat }))}
+                            className={`group relative rounded-xl border-2 p-3 text-left transition-all duration-200 ${form.category === cat ? "border-blue-500 bg-blue-50 shadow-md shadow-blue-100" : "border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50"}`}>
+                            {form.category === cat && <div className="absolute right-2 top-2"><CheckCircle2 className="size-4 text-blue-500" /></div>}
                             <span className="text-lg">{categoryConfig[cat].emoji}</span>
-                            <p className={`mt-1 text-xs font-semibold ${form.category === cat ? "text-blue-700" : "text-slate-700"}`}>
-                              {cat}
-                            </p>
+                            <p className={`mt-1 text-xs font-semibold ${form.category === cat ? "text-blue-700" : "text-slate-700"}`}>{cat}</p>
                             <p className="mt-0.5 text-xs text-slate-500 leading-tight">{categoryConfig[cat].description}</p>
                           </button>
                         ))}
@@ -352,23 +385,12 @@ export default function SubmitProblemPage() {
                         {(Object.keys(priorityConfig) as Priority[]).map((lvl) => {
                           const p = priorityConfig[lvl];
                           return (
-                            <button
-                              key={lvl}
-                              onClick={() => setForm((f) => ({ ...f, priority: lvl }))}
-                              className={`flex flex-col items-center gap-1.5 rounded-xl border-2 py-3 transition-all duration-200 ${
-                                form.priority === lvl
-                                  ? `${p.border} ${p.bg} shadow-md ${p.glow}`
-                                  : "border-slate-200 bg-white hover:border-slate-300"
-                              }`}
-                            >
+                            <button key={lvl} onClick={() => setForm((f) => ({ ...f, priority: lvl }))}
+                              className={`flex flex-col items-center gap-1.5 rounded-xl border-2 py-3 transition-all duration-200 ${form.priority === lvl ? `${p.border} ${p.bg} shadow-md ${p.glow}` : "border-slate-200 bg-white hover:border-slate-300"}`}>
                               <span className={`flex size-8 items-center justify-center rounded-full ${form.priority === lvl ? p.bg : "bg-slate-100"}`}>
-                                <span className={form.priority === lvl ? p.color : "text-slate-400"}>
-                                  {p.icon}
-                                </span>
+                                <span className={form.priority === lvl ? p.color : "text-slate-400"}>{p.icon}</span>
                               </span>
-                              <span className={`text-xs font-semibold ${form.priority === lvl ? p.color : "text-slate-600"}`}>
-                                {lvl}
-                              </span>
+                              <span className={`text-xs font-semibold ${form.priority === lvl ? p.color : "text-slate-600"}`}>{lvl}</span>
                             </button>
                           );
                         })}
@@ -377,7 +399,7 @@ export default function SubmitProblemPage() {
                   </div>
                 )}
 
-                {/* Step 2: Attachments */}
+                {/* ── Step 2: Attachments ── */}
                 {step === 2 && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                     <div
@@ -388,36 +410,26 @@ export default function SubmitProblemPage() {
                         <Upload className="size-6 text-blue-600" />
                       </div>
                       <div className="text-center">
-                        <p className="text-sm font-semibold text-slate-700">Drop files here or click to browse</p>
-                        <p className="text-xs text-slate-500">PDF, DOCX, XLSX, PNG up to 10MB</p>
+                        <p className="text-sm font-semibold text-slate-700">Click to browse files</p>
+                        <p className="text-xs text-slate-500">PDF, DOCX, XLSX, PNG, JPG — up to 10 MB each</p>
                       </div>
-                      <input ref={fileInputRef} type="file" className="hidden" multiple />
+                      <input ref={fileInputRef} type="file" className="hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={handleFileChange} />
                     </div>
 
-                    <div className="flex gap-2">
-                      <input
-                        placeholder="Or type a filename manually..."
-                        value={attachmentInput}
-                        onChange={(e) => setAttachmentInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && addAttachment()}
-                        className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100 transition-all"
-                      />
-                      <Button variant="outline" size="sm" onClick={addAttachment}>
-                        <Paperclip className="mr-1.5 size-3.5" /> Add
-                      </Button>
-                    </div>
-
-                    {form.attachments.length > 0 && (
+                    {files.length > 0 && (
                       <div className="space-y-2">
-                        {form.attachments.map((file, idx) => (
-                          <div key={idx} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <div className="flex size-7 items-center justify-center rounded-lg bg-blue-50">
+                        {files.map((file, idx) => (
+                          <div key={idx} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-50">
                                 <Paperclip className="size-3.5 text-blue-500" />
                               </div>
-                              <span className="text-sm text-slate-700">{file}</span>
+                              <div className="min-w-0">
+                                <p className="truncate text-sm text-slate-700">{file.name}</p>
+                                <p className="text-xs text-slate-400">{formatSize(file.size)}</p>
+                              </div>
                             </div>
-                            <button onClick={() => removeAttachment(idx)} className="text-slate-400 hover:text-rose-500 transition-colors">
+                            <button onClick={() => removeFile(idx)} className="ml-2 shrink-0 text-slate-400 hover:text-rose-500 transition-colors">
                               <X className="size-4" />
                             </button>
                           </div>
@@ -425,13 +437,13 @@ export default function SubmitProblemPage() {
                       </div>
                     )}
 
-                    {form.attachments.length === 0 && (
-                      <p className="text-center text-xs text-slate-400">No attachments added — this step is optional</p>
+                    {files.length === 0 && (
+                      <p className="text-center text-sm text-slate-400">No files added yet</p>
                     )}
                   </div>
                 )}
 
-                {/* Step 3: Review */}
+                {/* ── Step 3: Review ── */}
                 {step === 3 && (
                   <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                     <div className="rounded-2xl bg-gradient-to-br from-slate-50 to-blue-50 border border-blue-100 p-5 space-y-4">
@@ -448,9 +460,7 @@ export default function SubmitProblemPage() {
                         <div className="grid grid-cols-2 gap-3">
                           <div>
                             <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Category</p>
-                            <p className="mt-0.5 text-sm text-slate-700">
-                              {categoryConfig[form.category].emoji} {form.category}
-                            </p>
+                            <p className="mt-0.5 text-sm text-slate-700">{categoryConfig[form.category].emoji} {form.category}</p>
                           </div>
                           <div>
                             <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Priority</p>
@@ -459,81 +469,152 @@ export default function SubmitProblemPage() {
                             </span>
                           </div>
                         </div>
-                        {form.attachments.length > 0 && (
+                        {files.length > 0 && (
                           <div>
-                            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Attachments ({form.attachments.length})</p>
+                            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">Attachments ({files.length})</p>
                             <div className="mt-1 flex flex-wrap gap-1.5">
-                              {form.attachments.map((f, i) => (
+                              {files.map((f, i) => (
                                 <span key={i} className="rounded-full bg-white border border-slate-200 px-2 py-0.5 text-xs text-slate-600">
-                                  {f}
+                                  {f.name}
                                 </span>
                               ))}
                             </div>
                           </div>
                         )}
+                        {files.length === 0 && (
+                          <p className="text-xs text-slate-400 italic">No attachments</p>
+                        )}
                       </div>
                     </div>
-
                     <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
                       <AlertCircle className="size-4 shrink-0 text-amber-500 mt-0.5" />
                       <p className="text-xs text-amber-700">
-                        Once submitted, a Business Analyst will be assigned within 2 business days. You can track progress under <strong>My Requests</strong>.
+                        Next you'll choose how to assign a Business Analyst. You can track progress under <strong>My Requests</strong>.
                       </p>
                     </div>
                   </div>
                 )}
 
+                {/* ── Step 4: Assign BA ── */}
+                {step === 4 && (
+                  <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-300">
+                    <div>
+                      <label className="mb-3 block text-sm font-medium text-slate-700">How would you like to assign a Business Analyst?</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={() => { setAssignMode("automatic"); setSelectedBaId(null); }}
+                          className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 ${assignMode === "automatic" ? "border-blue-500 bg-blue-50 shadow-md shadow-blue-100" : "border-slate-200 bg-white hover:border-blue-200"}`}
+                        >
+                          {assignMode === "automatic" && <CheckCircle2 className="absolute right-3 top-3 size-4 text-blue-500" />}
+                          <div className="flex size-10 items-center justify-center rounded-xl bg-blue-100 mb-3">
+                            <Bot className="size-5 text-blue-600" />
+                          </div>
+                          <p className={`text-sm font-semibold ${assignMode === "automatic" ? "text-blue-700" : "text-slate-700"}`}>Automatic</p>
+                          <p className="mt-0.5 text-xs text-slate-500 leading-tight">System picks the BA with the lightest workload</p>
+                        </button>
+
+                        <button
+                          onClick={() => { setAssignMode("manual"); loadBaList(); }}
+                          className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 ${assignMode === "manual" ? "border-purple-500 bg-purple-50 shadow-md shadow-purple-100" : "border-slate-200 bg-white hover:border-purple-200"}`}
+                        >
+                          {assignMode === "manual" && <CheckCircle2 className="absolute right-3 top-3 size-4 text-purple-500" />}
+                          <div className="flex size-10 items-center justify-center rounded-xl bg-purple-100 mb-3">
+                            <User className="size-5 text-purple-600" />
+                          </div>
+                          <p className={`text-sm font-semibold ${assignMode === "manual" ? "text-purple-700" : "text-slate-700"}`}>Manual</p>
+                          <p className="mt-0.5 text-xs text-slate-500 leading-tight">Choose a specific Business Analyst yourself</p>
+                        </button>
+                      </div>
+                    </div>
+
+                    {assignMode === "manual" && (
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-slate-700">Select a Business Analyst</label>
+                        {baListLoading ? (
+                          <div className="flex items-center justify-center py-8 text-slate-400 text-sm gap-2">
+                            <div className="size-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+                            Loading BA accounts...
+                          </div>
+                        ) : baList.length === 0 ? (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                            No Business Analyst accounts found. Use Automatic assignment or ask your admin to create BA accounts.
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {baList.map((ba) => (
+                              <button
+                                key={ba.id}
+                                onClick={() => setSelectedBaId(ba.id)}
+                                className={`group w-full flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-all duration-200 ${selectedBaId === ba.id ? "border-purple-500 bg-purple-50" : "border-slate-200 bg-white hover:border-purple-200 hover:bg-slate-50"}`}
+                              >
+                                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 text-xs font-bold text-white">
+                                  {(ba.name || ba.email).slice(0, 2).toUpperCase()}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className={`text-sm font-semibold ${selectedBaId === ba.id ? "text-purple-800" : "text-slate-800"}`}>
+                                    {ba.name || ba.email}
+                                  </p>
+                                  {ba.name && <p className="text-xs text-slate-500">{ba.email}</p>}
+                                </div>
+                                {selectedBaId === ba.id && <CheckCircle2 className="size-4 shrink-0 text-purple-500" />}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {submitError && (
+                      <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-600">
+                        <AlertCircle className="size-4 shrink-0" /> {submitError}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Navigation */}
                 <div className="flex items-center justify-between pt-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setStep((s) => s - 1)}
-                    disabled={step === 0}
-                    className="text-slate-500"
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => setStep((s) => s - 1)} disabled={step === 0} className="text-slate-500">
                     Back
                   </Button>
 
-                  {step < steps.length - 1 ? (
-                    <Button
-                      variant="gradient-primary"
-                      size="sm"
-                      disabled={!canProceed[step]}
-                      onClick={() => setStep((s) => s + 1)}
-                    >
-                      Continue <ArrowRight className="ml-1.5 size-3.5" />
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="gradient-primary"
-                      size="md"
-                      isLoading={isSubmitting}
-                      onClick={handleSubmit}
-                    >
-                      {!isSubmitting && <Send className="mr-2 size-4" />}
-                      Submit Request
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Skip button on attachments step */}
+                    {step === 2 && files.length === 0 && (
+                      <Button variant="secondary" size="sm" onClick={() => setStep((s) => s + 1)}>
+                        Skip
+                      </Button>
+                    )}
+
+                    {step < steps.length - 1 ? (
+                      <Button variant="gradient-primary" size="sm" disabled={!canProceed[step]} onClick={() => setStep((s) => s + 1)}>
+                        Continue <ArrowRight className="ml-1.5 size-3.5" />
+                      </Button>
+                    ) : (
+                      <Button variant="gradient-primary" size="md" isLoading={isSubmitting} disabled={!canProceed[step]} onClick={handleSubmit}>
+                        {!isSubmitting && <Send className="mr-2 size-4" />}
+                        Submit Request
+                      </Button>
+                    )}
+                  </div>
                 </div>
+
               </div>
             )}
           </div>
         </Card>
 
-        {/* Sidebar: Recent submissions */}
+        {/* Sidebar */}
         <div className="space-y-4">
           <Card className="!p-0 overflow-hidden">
             <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-slate-800">Recent Submissions</h3>
-                <span className="flex size-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-                  {items.length}
-                </span>
+                <span className="flex size-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{submissions.length}</span>
               </div>
             </div>
             <div className="p-4 space-y-3 max-h-[420px] overflow-y-auto">
-              {items.length === 0 ? (
+              {submissions.length === 0 ? (
                 <div className="flex flex-col items-center py-8 text-center">
                   <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-slate-100">
                     <FileText className="size-5 text-slate-400" />
@@ -542,28 +623,20 @@ export default function SubmitProblemPage() {
                   <p className="mt-1 text-xs text-slate-400">Your requests will appear here</p>
                 </div>
               ) : (
-                items.map((item, i) => <SubmissionCard key={item.id} item={item} index={i} />)
+                submissions.map((item) => <SubmissionCard key={item.id} item={item} />)
               )}
             </div>
           </Card>
 
-          {/* Tips card */}
           <Card variant="gradient-subtle" className="!p-4">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles className="size-4 text-blue-500" />
               <h4 className="text-sm font-semibold text-slate-700">Tips for a great submission</h4>
             </div>
             <ul className="space-y-2">
-              {[
-                "Be specific — avoid vague titles like 'System problem'",
-                "Quantify the impact when possible (e.g. '3 hours lost daily')",
-                "Attach screenshots or reports if available",
-                "Set Critical priority only for urgent blockers",
-              ].map((tip, i) => (
+              {["Be specific — avoid vague titles like 'System problem'", "Quantify the impact (e.g. '3 hours lost daily')", "Attach screenshots or reports if available", "Set Critical priority only for urgent blockers"].map((tip, i) => (
                 <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
-                  <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 font-bold text-[10px]">
-                    {i + 1}
-                  </span>
+                  <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 font-bold text-[10px]">{i + 1}</span>
                   {tip}
                 </li>
               ))}

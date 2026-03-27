@@ -18,7 +18,7 @@ export const stakeholderNav: NavItem[] = [
 
 export const baNav: NavItem[] = [
   { label: "Dashboard", href: "/ba/dashboard", icon: "layout-dashboard" },
-  { label: "Assigned Problems", href: "/ba/assigned-problems", icon: "briefcase-business" },
+  { label: "Assigned Requests", href: "/ba/assigned-problems", icon: "briefcase-business" },
   { label: "Stakeholder Discussions", href: "/ba/discussions", icon: "messages-square" },
   { label: "BRD Management", href: "/ba/brd-management", icon: "file-text" },
   { label: "FRD Management", href: "/ba/frd-management", icon: "folder-cog" },

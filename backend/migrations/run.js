@@ -40,6 +40,36 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
 -- Create index on admin_id and timestamp for faster queries
 CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_admin_id ON admin_audit_logs(admin_id);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_timestamp ON admin_audit_logs(timestamp DESC);
+
+-- Requests table
+CREATE TABLE IF NOT EXISTS requests (
+  id SERIAL PRIMARY KEY,
+  req_number VARCHAR(20) UNIQUE NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  priority VARCHAR(20) NOT NULL,
+  category VARCHAR(100) NOT NULL,
+  status VARCHAR(50) DEFAULT 'Submitted',
+  assignment_mode VARCHAR(20) DEFAULT 'automatic',
+  stakeholder_id INTEGER REFERENCES users(id),
+  assigned_ba_id INTEGER REFERENCES users(id),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Request attachments table (stores file data as bytea)
+CREATE TABLE IF NOT EXISTS request_attachments (
+  id SERIAL PRIMARY KEY,
+  request_id INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  original_name VARCHAR(255) NOT NULL,
+  mimetype VARCHAR(100),
+  size INTEGER,
+  data BYTEA NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_requests_ba ON requests(assigned_ba_id);
+CREATE INDEX IF NOT EXISTS idx_requests_stakeholder ON requests(stakeholder_id);
 `;
 
 async function migrate() {
