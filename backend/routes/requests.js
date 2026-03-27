@@ -116,6 +116,39 @@ router.post("/", authenticateToken, upload.array("attachments", 10), async (req,
   }
 });
 
+// GET /api/requests/my — requests submitted by the logged-in stakeholder
+router.get("/my", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "stakeholder") {
+      return res.status(403).json({ message: "Only stakeholder users can access this" });
+    }
+
+    const result = await pool.query(
+      `SELECT r.id, r.req_number, r.title, r.description, r.priority, r.category,
+              r.status, r.assignment_mode, r.created_at,
+              u.email AS ba_email, u.name AS ba_name,
+              COALESCE(
+                json_agg(
+                  json_build_object('id', a.id, 'original_name', a.original_name, 'mimetype', a.mimetype, 'size', a.size)
+                ) FILTER (WHERE a.id IS NOT NULL),
+                '[]'
+              ) AS attachments
+       FROM requests r
+       LEFT JOIN users u ON u.id = r.assigned_ba_id
+       LEFT JOIN request_attachments a ON a.request_id = r.id
+       WHERE r.stakeholder_id = $1
+       GROUP BY r.id, u.email, u.name
+       ORDER BY r.created_at DESC`,
+      [req.user.id]
+    );
+
+    res.json({ requests: result.rows });
+  } catch (error) {
+    console.error("My requests error:", error);
+    res.status(500).json({ message: "Error fetching requests" });
+  }
+});
+
 // GET /api/requests/assigned — requests assigned to the logged-in BA
 router.get("/assigned", authenticateToken, async (req, res) => {
   try {

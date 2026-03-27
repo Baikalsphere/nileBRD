@@ -30,16 +30,6 @@ type AssignMode = "automatic" | "manual";
 
 type BAUser = { id: number; email: string; name: string | null };
 
-type Submission = {
-  id: string;
-  req_number: string;
-  title: string;
-  priority: Priority;
-  category: Category;
-  assignedBa: { email: string; name: string | null } | null;
-  submittedAt: Date;
-};
-
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
 const priorityConfig: Record<Priority, { color: string; bg: string; border: string; icon: React.ReactNode; glow: string }> = {
@@ -87,39 +77,12 @@ function CharCounter({ value, max }: { value: string; max: number }) {
   return <span className={`text-xs transition-colors duration-300 ${color}`}>{value.length}/{max}</span>;
 }
 
-function SubmissionCard({ item }: { item: Submission }) {
-  const p = priorityConfig[item.priority];
-  return (
-    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-      <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-mono text-blue-500">{item.req_number}</p>
-          <p className="truncate text-sm font-semibold text-slate-800">{item.title}</p>
-        </div>
-        <div className={`flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${p.color} ${p.bg} ${p.border}`}>
-          {p.icon} {item.priority}
-        </div>
-      </div>
-      <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-        <span>{categoryConfig[item.category].emoji} {item.category}</span>
-        {item.assignedBa && (
-          <span className="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-purple-600">
-            <Briefcase className="size-3" />
-            {item.assignedBa.name || item.assignedBa.email}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 export default function SubmitProblemPage() {
   const [step, setStep] = useState(0);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [lastResult, setLastResult] = useState<{ reqNumber: string; assignedBa: { email: string; name: string | null } | null } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -211,15 +174,6 @@ export default function SubmitProblemPage() {
       if (!res.ok) throw new Error(data.message || "Submission failed");
 
       setLastResult({ reqNumber: data.request.req_number, assignedBa: data.assignedBa });
-      setSubmissions((prev) => [{
-        id: String(data.request.id),
-        req_number: data.request.req_number,
-        title: data.request.title,
-        priority: data.request.priority,
-        category: data.request.category,
-        assignedBa: data.assignedBa,
-        submittedAt: new Date(),
-      }, ...prev]);
       setSubmitted(true);
     } catch (err: unknown) {
       setSubmitError(err instanceof Error ? err.message : "Submission failed");
@@ -258,10 +212,6 @@ export default function SubmitProblemPage() {
             </div>
             <h1 className="text-2xl font-bold tracking-tight">Submit a Business Request</h1>
             <p className="mt-1 text-sm text-blue-100">Describe your problem clearly — our BA team will review and assign it.</p>
-          </div>
-          <div className="hidden flex-col items-end gap-1 text-right md:flex">
-            <span className="text-xs text-blue-200">Submitted This Session</span>
-            <span className="text-4xl font-bold tabular-nums">{submissions.length}</span>
           </div>
         </div>
       </div>
@@ -606,28 +556,6 @@ export default function SubmitProblemPage() {
 
         {/* Sidebar */}
         <div className="space-y-4">
-          <Card className="!p-0 overflow-hidden">
-            <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-5 py-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-slate-800">Recent Submissions</h3>
-                <span className="flex size-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{submissions.length}</span>
-              </div>
-            </div>
-            <div className="p-4 space-y-3 max-h-[420px] overflow-y-auto">
-              {submissions.length === 0 ? (
-                <div className="flex flex-col items-center py-8 text-center">
-                  <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-slate-100">
-                    <FileText className="size-5 text-slate-400" />
-                  </div>
-                  <p className="text-sm font-medium text-slate-500">No submissions yet</p>
-                  <p className="mt-1 text-xs text-slate-400">Your requests will appear here</p>
-                </div>
-              ) : (
-                submissions.map((item) => <SubmissionCard key={item.id} item={item} />)
-              )}
-            </div>
-          </Card>
-
           <Card variant="gradient-subtle" className="!p-4">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles className="size-4 text-blue-500" />

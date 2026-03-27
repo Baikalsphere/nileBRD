@@ -21,11 +21,16 @@ export function initChat(io) {
     // Join a request's chat room
     socket.on("join-room", async ({ requestId }) => {
       try {
-        // Verify the user belongs to this request
-        const access = await pool.query(
-          "SELECT id FROM requests WHERE id = $1 AND (stakeholder_id = $2 OR assigned_ba_id = $2)",
-          [requestId, userId]
-        );
+        // Stakeholders can join any active request; BAs only their assigned ones
+        let accessQuery, accessValues;
+        if (role === "stakeholder") {
+          accessQuery = "SELECT id FROM requests WHERE id = $1 AND status != 'Closed'";
+          accessValues = [requestId];
+        } else {
+          accessQuery = "SELECT id FROM requests WHERE id = $1 AND assigned_ba_id = $2";
+          accessValues = [requestId, userId];
+        }
+        const access = await pool.query(accessQuery, accessValues);
         if (access.rows.length === 0) {
           socket.emit("error", { message: "Access denied to this request" });
           return;
@@ -46,11 +51,16 @@ export function initChat(io) {
       try {
         if (!message?.trim()) return;
 
-        // Verify access
-        const access = await pool.query(
-          "SELECT id FROM requests WHERE id = $1 AND (stakeholder_id = $2 OR assigned_ba_id = $2)",
-          [requestId, userId]
-        );
+        // Verify access — stakeholders can message on any active request
+        let accessQuery, accessValues;
+        if (role === "stakeholder") {
+          accessQuery = "SELECT id FROM requests WHERE id = $1 AND status != 'Closed'";
+          accessValues = [requestId];
+        } else {
+          accessQuery = "SELECT id FROM requests WHERE id = $1 AND assigned_ba_id = $2";
+          accessValues = [requestId, userId];
+        }
+        const access = await pool.query(accessQuery, accessValues);
         if (access.rows.length === 0) return;
 
         // Persist message
