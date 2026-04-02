@@ -131,15 +131,17 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
             )}
           </div>
         </div>
-        <a
-          href="/ba/brd-management"
-          target="_blank"
-          rel="noreferrer"
-          title="View in BRD Management"
-          className="flex size-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-indigo-100 hover:text-indigo-600 transition-colors"
-        >
-          <ExternalLink className="size-3.5" />
-        </a>
+        {isBA && (
+          <a
+            href="/ba/brd-management"
+            target="_blank"
+            rel="noreferrer"
+            title="View in BRD Management"
+            className="flex size-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-indigo-100 hover:text-indigo-600 transition-colors"
+          >
+            <ExternalLink className="size-3.5" />
+          </a>
+        )}
       </div>
 
       {/* Review progress */}
@@ -260,7 +262,7 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
         {/* Stakeholder view — approve or request changes */}
         {!isBA && !allApproved && (
           <>
-            {myReview ? (
+            {myReview && myReview.status !== "pending" ? (
               <div>
                 <div className={`mb-2 flex items-center gap-2 rounded-xl px-3 py-2 ${
                   myReview.status === "approved"

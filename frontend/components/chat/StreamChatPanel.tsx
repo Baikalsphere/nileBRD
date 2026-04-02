@@ -11,6 +11,7 @@ import {
   MessageInput,
   Thread,
   MessageSimple,
+  MessageOptions,
   Attachment,
   useMessageContext,
 } from "stream-chat-react";
@@ -89,6 +90,13 @@ const ImportantCtx = createContext<{
 
 // Provides currentUser to BrdReviewCard rendered inside Stream Chat attachments
 const ChatUserCtx = createContext<CurrentUser | null>(null);
+
+// Hide the emoji/reply/more-options action bar for non-BA users
+function CustomMessageOptions(props: Parameters<typeof MessageOptions>[0]) {
+  const currentUser = useContext(ChatUserCtx);
+  if (currentUser?.role !== "ba") return null;
+  return <MessageOptions {...props} />;
+}
 
 type BrdAttachmentPayload = { brd_id: number; doc_id: string; title: string; version: string; request_id: number };
 
@@ -761,7 +769,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
           ) : channel ? (
             <div className="absolute inset-0 bg-slate-50/30">
               <Chat client={getStreamClient()} theme="str-chat__theme-light">
-                <Channel channel={channel} Message={CustomMessage} Attachment={CustomAttachment}>
+                <Channel channel={channel} Message={CustomMessage} Attachment={CustomAttachment} MessageOptions={CustomMessageOptions}>
                   <Window>
                     <MessageList />
                     <MessageInput focus />
