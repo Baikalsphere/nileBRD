@@ -6,7 +6,7 @@ import {
   Clock, Tag, Users, ClipboardList, ShieldAlert, Zap,
   BarChart3, BookOpen, Printer, RefreshCw,
   MessageSquare, ArrowUpRight, Loader2, Info,
-  Eye, Download, ChevronLeft, X,
+  Eye, Download, ChevronLeft, X, Send,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
@@ -19,11 +19,16 @@ interface BrdListItem {
   status: "Draft" | "In Review" | "Approved" | "Final";
   generated_at: string;
   updated_at: string;
+  request_id: number;
   request_title: string;
   req_number: string;
   priority: string;
   category: string;
   source_messages: string;
+  reviews_pending: string;
+  reviews_approved: string;
+  reviews_changes: string;
+  reviews_total: string;
 }
 
 interface FRItem   { id: string; description: string; priority: string; source: string; original: string }
@@ -504,11 +509,13 @@ function BrdViewerModal({ doc, onClose, onUpdateStatus }: { doc: BrdDoc; onClose
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function BRDManagementPage() {
-  const [brdList, setBrdList]     = useState<BrdListItem[]>([]);
-  const [loadingList, setLoading] = useState(true);
+  const [brdList, setBrdList]       = useState<BrdListItem[]>([]);
+  const [loadingList, setLoading]   = useState(true);
   const [viewingDoc, setViewingDoc] = useState<BrdDoc | null>(null);
   const [loadingId, setLoadingId]   = useState<number | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [postingId, setPostingId]   = useState<number | null>(null);
+  const [enhancingId, setEnhancingId] = useState<number | null>(null);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -551,6 +558,34 @@ export default function BRDManagementPage() {
       setBrdList(prev => prev.map(b => b.id === id ? { ...b, status: status as BrdListItem["status"] } : b));
     } finally { setUpdatingId(null); }
   }, []);
+
+  const postToChannel = useCallback(async (id: number) => {
+    setPostingId(id);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`${API}/api/stream/brd-documents/${id}/post-to-channel`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.message || "Failed to post BRD"); return; }
+      alert(`BRD posted to discussion channel. ${data.reviewers} reviewer(s) notified.`);
+      fetchList();
+    } finally { setPostingId(null); }
+  }, [fetchList]);
+
+  const enhanceFromFeedback = useCallback(async (id: number) => {
+    setEnhancingId(id);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`${API}/api/stream/brd-documents/${id}/enhance`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { const d = await res.json(); alert(d.message || "Enhancement failed"); return; }
+      fetchList();
+    } finally { setEnhancingId(null); }
+  }, [fetchList]);
 
   return (
     <div className="space-y-5">
@@ -598,13 +633,13 @@ export default function BRDManagementPage() {
                 {[
                   { label: "Document ID", w: "w-44" },
                   { label: "Request" },
-                  { label: "Category",  w: "w-32" },
+                  { label: "Category",  w: "w-28" },
                   { label: "Priority",  w: "w-24" },
                   { label: "Status",    w: "w-28" },
-                  { label: "Version",   w: "w-20" },
-                  { label: "Date",      w: "w-32" },
-                  { label: "Sources",   w: "w-20" },
-                  { label: "Actions",   w: "w-40" },
+                  { label: "Version",   w: "w-16" },
+                  { label: "Date",      w: "w-28" },
+                  { label: "Reviews",   w: "w-28" },
+                  { label: "Actions",   w: "w-56" },
                 ].map(({ label, w }) => (
                   <th key={label} className={`${w ?? ""} px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400`}>
                     {label}
@@ -663,39 +698,83 @@ export default function BRDManagementPage() {
                     </span>
                   </td>
 
-                  {/* Sources */}
+                  {/* Reviews */}
                   <td className="px-4 py-4">
-                    <span className="flex items-center gap-1 text-xs text-slate-500">
-                      <Sparkles className="size-3 text-amber-400" />
-                      {brd.source_messages}
-                    </span>
+                    {parseInt(brd.reviews_total) === 0 ? (
+                      <span className="text-xs text-slate-400">—</span>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <CheckCircle2 className="size-3 text-emerald-500" />
+                          <span className="text-xs font-semibold text-slate-700">
+                            {brd.reviews_approved}/{brd.reviews_total}
+                          </span>
+                          {parseInt(brd.reviews_approved) === parseInt(brd.reviews_total) && parseInt(brd.reviews_total) > 0 && (
+                            <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-600">All</span>
+                          )}
+                        </div>
+                        {parseInt(brd.reviews_changes) > 0 && (
+                          <span className="text-[10px] text-rose-600 font-medium">
+                            {brd.reviews_changes} change req.
+                          </span>
+                        )}
+                        {parseInt(brd.reviews_pending) > 0 && (
+                          <span className="text-[10px] text-amber-600">
+                            {brd.reviews_pending} pending
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
 
                   {/* Actions */}
                   <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {/* View */}
                       <button
                         onClick={() => openView(brd.id)}
                         disabled={loadingId === brd.id}
-                        className="flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors disabled:opacity-50"
                       >
-                        {loadingId === brd.id
-                          ? <Loader2 className="size-3.5 animate-spin" />
-                          : <Eye className="size-3.5" />
-                        }
+                        {loadingId === brd.id ? <Loader2 className="size-3 animate-spin" /> : <Eye className="size-3" />}
                         View
                       </button>
 
-                      {/* Generate PDF */}
+                      {/* PDF */}
                       <button
                         onClick={() => openPdfDirect(brd.id)}
                         disabled={loadingId === brd.id}
-                        className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 hover:border-violet-300 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
                       >
-                        <Download className="size-3.5" />
+                        <Download className="size-3" />
                         PDF
                       </button>
+
+                      {/* Post to Channel — show when Draft or after enhancement */}
+                      {(brd.status === "Draft" || brd.status === "In Review") && (
+                        <button
+                          onClick={() => postToChannel(brd.id)}
+                          disabled={postingId === brd.id}
+                          title="Share BRD to discussion channel for stakeholder review"
+                          className="flex items-center gap-1 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 transition-colors disabled:opacity-50"
+                        >
+                          {postingId === brd.id ? <Loader2 className="size-3 animate-spin" /> : <MessageSquare className="size-3" />}
+                          Share
+                        </button>
+                      )}
+
+                      {/* Enhance from feedback — show when there are change requests */}
+                      {parseInt(brd.reviews_changes) > 0 && (
+                        <button
+                          onClick={() => enhanceFromFeedback(brd.id)}
+                          disabled={enhancingId === brd.id}
+                          title={`Enhance BRD with ${brd.reviews_changes} improvement comment(s)`}
+                          className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                        >
+                          {enhancingId === brd.id ? <Loader2 className="size-3 animate-spin" /> : <Sparkles className="size-3" />}
+                          Enhance
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -709,7 +788,7 @@ export default function BRDManagementPage() {
       {brdList.length > 0 && (
         <p className="text-center text-xs text-slate-400">
           <Sparkles className="inline size-3 text-amber-400 mr-1" />
-          Click <strong>View</strong> to read the full document · Click <strong>PDF</strong> to open a print-ready version you can save as PDF
+          <strong>View</strong> reads the document · <strong>PDF</strong> exports it · <strong>Share</strong> posts it to the channel for stakeholder review · <strong>Enhance</strong> runs AI improvement from feedback
         </p>
       )}
 

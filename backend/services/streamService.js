@@ -42,3 +42,12 @@ export async function removeMemberFromChannel(requestId, userId) {
   const channel = serverClient.channel("messaging", `request-${requestId}`);
   await channel.removeMembers([String(userId)]);
 }
+
+export async function sendMessageToChannel(requestId, text, attachments = [], senderId) {
+  const channel = serverClient.channel("messaging", `request-${requestId}`);
+  return await channel.sendMessage({
+    text,
+    attachments,
+    user_id: String(senderId),
+  });
+}

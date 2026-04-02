@@ -200,6 +200,138 @@ async function generateObjective(analysis, requestInfo) {
     `This initiative aims to improve operational efficiency, reduce manual effort, and provide measurable business value aligned with organisational goals.`;
 }
 
+// ─── AI-driven BRD enhancement from stakeholder feedback ─────────────────────
+/**
+ * Takes an existing BRD and stakeholder improvement comments, runs them through
+ * Flan-T5 + pattern logic to produce an improved next-version BRD.
+ *
+ * @param {object} existingBrd - full BRD JSON (meta + sections)
+ * @param {Array<{reviewer_name:string, comment:string}>} improvementComments
+ * @param {{id:number, req_number:string, title:string, category:string, priority:string}} requestInfo
+ */
+export async function enhanceBRD(existingBrd, improvementComments, requestInfo) {
+  const commentsText = improvementComments
+    .map((c) => `${c.reviewer_name}: ${c.comment}`)
+    .join(". ");
+
+  const ex = existingBrd.sections;
+  const meta = existingBrd.meta;
+
+  // Bump minor version: "0.1" → "0.2", "1.0" → "1.1"
+  const parts = String(meta.version).split(".");
+  const newVersion = `${parts[0]}.${parseInt(parts[1] ?? "0") + 1}`;
+  const now = new Date();
+  const docId = `BRD-${requestInfo.req_number || requestInfo.id}-v${newVersion}`;
+
+  // 1. Regenerate executive summary incorporating feedback
+  const execPrompt = `Revise this business requirements document executive summary based on stakeholder feedback. Original: "${ex.executive_summary.text}". Feedback: "${commentsText}". Write an improved 2-sentence executive summary.`;
+  const newExecSummary = await generateText(execPrompt, 120);
+
+  // 2. Extract new requirements from feedback comments
+  const existingReqTexts = ex.functional_requirements.items.map(
+    (fr) => fr.original || fr.description
+  );
+
+  const extractReqPrompt = `From these stakeholder review comments, extract any new system requirements or changes needed: "${commentsText}". List each as a brief requirement. If none, say "none".`;
+  const extractedReqs = await generateText(extractReqPrompt, 80);
+
+  const allReqTexts = [...existingReqTexts];
+  if (extractedReqs && extractedReqs.length > 10 && !/^none/i.test(extractedReqs)) {
+    const newLines = extractedReqs
+      .split(/[.;\n]/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 15 && !/^(none|no new|already)/i.test(s));
+    allReqTexts.push(...newLines.slice(0, 3));
+  }
+
+  // 3. Formalise all requirements (existing + newly extracted)
+  const formalRequirements = [];
+  for (const [i, req] of allReqTexts.entries()) {
+    const formal = await formaliseRequirement(req);
+    const isNew = i >= existingReqTexts.length;
+    formalRequirements.push({
+      id: `FR-${String(i + 1).padStart(3, "0")}`,
+      description: formal,
+      priority: moscowPriority(req),
+      source: isNew
+        ? `Stakeholder Feedback (v${newVersion})`
+        : ex.functional_requirements.items[i]?.source ?? "Key Conversation (Revised)",
+      original: cap(req),
+    });
+  }
+
+  // 4. Add new risks derived from change-request comments
+  const newRisks = [...ex.risk_register.items];
+  improvementComments
+    .filter((c) => /risk|concern|problem|issue|challenge|gap|miss|fail|wrong|unclear/i.test(c.comment))
+    .forEach((c, i) => {
+      const isDup = newRisks.some(
+        (r) => r.description.toLowerCase().slice(0, 30) === c.comment.toLowerCase().slice(0, 30)
+      );
+      if (!isDup) {
+        const { impact, probability } = assessRisk(c.comment);
+        newRisks.push({
+          id: `R-${String(ex.risk_register.items.length + i + 1).padStart(3, "0")}`,
+          description: cap(c.comment),
+          impact,
+          probability,
+          mitigation: deriveMitigation(c.comment),
+        });
+      }
+    });
+
+  // 5. Re-infer NFRs from the combined text (existing + feedback)
+  const allText = [...allReqTexts, commentsText].join(" ");
+  const nfrs = inferNFRs(allText).map((nfr, i) => ({
+    id: `NFR-${String(i + 1).padStart(3, "0")}`,
+    ...nfr,
+  }));
+
+  return {
+    meta: {
+      ...meta,
+      doc_id: docId,
+      version: newVersion,
+      status: "Draft",
+      generated_at: now.toISOString(),
+      effective_date: now.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      }),
+      enhanced_from_version: meta.version,
+      enhancement_comment_count: improvementComments.length,
+      ai_models: meta.ai_models,
+    },
+    sections: {
+      ...ex,
+      executive_summary: {
+        ...ex.executive_summary,
+        text:
+          newExecSummary.length > 30
+            ? newExecSummary
+            : `${ex.executive_summary.text} This version incorporates ${improvementComments.length} stakeholder review(s).`,
+      },
+      scope: {
+        ...ex.scope,
+        in_scope: formalRequirements.map((r) => r.original),
+      },
+      functional_requirements: {
+        ...ex.functional_requirements,
+        items: formalRequirements,
+      },
+      non_functional_requirements: {
+        ...ex.non_functional_requirements,
+        items: nfrs,
+      },
+      risk_register: {
+        ...ex.risk_register,
+        items: newRisks,
+      },
+    },
+  };
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 export async function generateBRD(analysis, requestInfo, messages = []) {
   const now = new Date();

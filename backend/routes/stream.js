@@ -2,13 +2,14 @@ import express from "express";
 import pool from "../config/db.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { analyseKeyPoints } from "../services/brdAgent.js";
-import { generateBRD } from "../services/brdGenerator.js";
+import { generateBRD, enhanceBRD } from "../services/brdGenerator.js";
 import {
   upsertStreamUser,
   generateStreamToken,
   getOrCreateRequestChannel,
   addMemberToChannel,
   removeMemberFromChannel,
+  sendMessageToChannel,
 } from "../services/streamService.js";
 
 const router = express.Router();
@@ -313,17 +314,23 @@ router.post("/channels/:requestId/generate-brd", authenticateToken, async (req, 
   }
 });
 
-// GET /api/stream/brd-documents — list all BRDs for the authenticated BA
+// GET /api/stream/brd-documents — list all BRDs for the authenticated BA (with review counts)
 router.get("/brd-documents", authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
     const { rows } = await pool.query(
       `SELECT bd.id, bd.doc_id, bd.version, bd.status, bd.generated_at, bd.updated_at,
-              r.title AS request_title, r.req_number, r.priority, r.category,
-              bd.content->'meta'->>'source_messages' AS source_messages
+              r.id AS request_id, r.title AS request_title, r.req_number, r.priority, r.category,
+              bd.content->'meta'->>'source_messages' AS source_messages,
+              COUNT(br.id) FILTER (WHERE br.status = 'pending')           AS reviews_pending,
+              COUNT(br.id) FILTER (WHERE br.status = 'approved')          AS reviews_approved,
+              COUNT(br.id) FILTER (WHERE br.status = 'changes_requested') AS reviews_changes,
+              COUNT(br.id)                                                  AS reviews_total
        FROM brd_documents bd
        JOIN requests r ON r.id = bd.request_id
+       LEFT JOIN brd_reviews br ON br.brd_document_id = bd.id
        WHERE bd.generated_by = $1
+       GROUP BY bd.id, r.id
        ORDER BY bd.updated_at DESC`,
       [req.user.id]
     );
@@ -367,6 +374,212 @@ router.patch("/brd-documents/:brdId/status", authenticateToken, async (req, res)
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ message: "Failed to update status" });
+  }
+});
+
+// POST /api/stream/brd-documents/:brdId/post-to-channel — BA shares BRD to the discussion channel
+router.post("/brd-documents/:brdId/post-to-channel", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { brdId } = req.params;
+
+    // Fetch the BRD and its linked request
+    const { rows: brdRows } = await pool.query(
+      `SELECT bd.*, r.id AS request_id, r.req_number, r.title, r.category, r.priority
+       FROM brd_documents bd JOIN requests r ON r.id = bd.request_id
+       WHERE bd.id = $1 AND bd.generated_by = $2`,
+      [brdId, req.user.id]
+    );
+    if (!brdRows.length) return res.status(404).json({ message: "BRD not found or not yours" });
+    const brd = brdRows[0];
+
+    // Get all channel members (excluding the BA themselves)
+    const { rows: members } = await pool.query(
+      `SELECT u.id, u.name, u.email FROM channel_members cm
+       JOIN users u ON u.id = cm.user_id
+       WHERE cm.request_id = $1 AND cm.user_id != $2`,
+      [brd.request_id, req.user.id]
+    );
+
+    // Upsert a 'pending' review row for each member
+    for (const m of members) {
+      await pool.query(
+        `INSERT INTO brd_reviews (brd_document_id, reviewer_id, reviewer_name, status)
+         VALUES ($1, $2, $3, 'pending')
+         ON CONFLICT (brd_document_id, reviewer_id)
+         DO UPDATE SET status = 'pending', comment = NULL, reviewed_at = NOW()`,
+        [brdId, m.id, m.name || m.email]
+      );
+    }
+
+    // Post a rich message to the Stream channel with a BRD review attachment
+    const { message } = await sendMessageToChannel(
+      brd.request_id,
+      `📄 **Draft BRD Ready for Review** — ${brd.title} (v${brd.version})\nPlease review the document and mark your approval or request changes.`,
+      [
+        {
+          type: "brd_review",
+          brd_id: parseInt(brdId),
+          doc_id: brd.doc_id,
+          title: brd.title,
+          version: brd.version,
+          request_id: brd.request_id,
+        },
+      ],
+      req.user.id
+    );
+
+    // Record the post
+    await pool.query(
+      `INSERT INTO brd_channel_posts (brd_document_id, request_id, stream_message_id, posted_by)
+       VALUES ($1, $2, $3, $4)`,
+      [brdId, brd.request_id, message.id, req.user.id]
+    );
+
+    // Update BRD status to "In Review"
+    await pool.query(
+      "UPDATE brd_documents SET status = 'In Review', updated_at = NOW() WHERE id = $1",
+      [brdId]
+    );
+
+    res.json({ ok: true, reviewers: members.length, streamMessageId: message.id });
+  } catch (err) {
+    console.error("Post BRD to channel error:", err);
+    res.status(500).json({ message: "Failed to post BRD to channel", detail: err.message });
+  }
+});
+
+// GET /api/stream/brd-documents/:brdId/reviews — get all reviews for a BRD
+router.get("/brd-documents/:brdId/reviews", authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT br.id, br.reviewer_id, br.reviewer_name, br.status, br.comment, br.reviewed_at
+       FROM brd_reviews br WHERE br.brd_document_id = $1 ORDER BY br.reviewed_at ASC`,
+      [req.params.brdId]
+    );
+    res.json({ reviews: rows });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch reviews" });
+  }
+});
+
+// POST /api/stream/brd-documents/:brdId/review — stakeholder submits approval or change request
+router.post("/brd-documents/:brdId/review", authenticateToken, async (req, res) => {
+  try {
+    const { brdId } = req.params;
+    const { status, comment } = req.body;
+    if (!["approved", "changes_requested"].includes(status)) {
+      return res.status(400).json({ message: "status must be 'approved' or 'changes_requested'" });
+    }
+
+    const userName = req.user.name || req.user.email;
+
+    // Upsert the reviewer's decision
+    await pool.query(
+      `INSERT INTO brd_reviews (brd_document_id, reviewer_id, reviewer_name, status, comment, reviewed_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (brd_document_id, reviewer_id)
+       DO UPDATE SET status = $4, comment = $5, reviewed_at = NOW()`,
+      [brdId, req.user.id, userName, status, comment || null]
+    );
+
+    // Check if ALL reviewers have approved (none pending or changes_requested)
+    const { rows: remaining } = await pool.query(
+      `SELECT COUNT(*) AS total,
+              COUNT(*) FILTER (WHERE status != 'approved') AS not_approved
+       FROM brd_reviews WHERE brd_document_id = $1`,
+      [brdId]
+    );
+
+    const { total, not_approved } = remaining[0];
+    if (parseInt(total) > 0 && parseInt(not_approved) === 0) {
+      // All approved — mark BRD as Approved
+      await pool.query(
+        "UPDATE brd_documents SET status = 'Approved', updated_at = NOW() WHERE id = $1",
+        [brdId]
+      );
+      return res.json({ ok: true, allApproved: true });
+    }
+
+    res.json({ ok: true, allApproved: false });
+  } catch (err) {
+    console.error("Submit review error:", err);
+    res.status(500).json({ message: "Failed to submit review" });
+  }
+});
+
+// POST /api/stream/brd-documents/:brdId/enhance — BA triggers AI enhancement from feedback
+router.post("/brd-documents/:brdId/enhance", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { brdId } = req.params;
+
+    // Get BRD + request info
+    const { rows: brdRows } = await pool.query(
+      `SELECT bd.content, bd.request_id, r.id, r.req_number, r.title, r.category, r.priority
+       FROM brd_documents bd JOIN requests r ON r.id = bd.request_id
+       WHERE bd.id = $1 AND bd.generated_by = $2`,
+      [brdId, req.user.id]
+    );
+    if (!brdRows.length) return res.status(404).json({ message: "BRD not found or not yours" });
+
+    const { content: existingBrd, request_id } = brdRows[0];
+    const requestInfo = brdRows[0];
+
+    // Get all change-request comments
+    const { rows: changeReviews } = await pool.query(
+      `SELECT reviewer_name, comment FROM brd_reviews
+       WHERE brd_document_id = $1 AND status = 'changes_requested' AND comment IS NOT NULL`,
+      [brdId]
+    );
+
+    if (!changeReviews.length) {
+      return res.status(400).json({ message: "No improvement comments to enhance from" });
+    }
+
+    // AI enhancement
+    const enhanced = await enhanceBRD(existingBrd, changeReviews, requestInfo);
+
+    // Replace the BRD in DB (same row — "replace with new version")
+    await pool.query(
+      `UPDATE brd_documents SET content = $1, doc_id = $2, version = $3, status = 'Draft',
+       generated_at = NOW(), updated_at = NOW() WHERE id = $4`,
+      [JSON.stringify(enhanced), enhanced.meta.doc_id, enhanced.meta.version, brdId]
+    );
+
+    // Reset all reviews to 'pending' for the new version
+    await pool.query(
+      "UPDATE brd_reviews SET status = 'pending', comment = NULL, reviewed_at = NOW() WHERE brd_document_id = $1",
+      [brdId]
+    );
+
+    // Post the new version to the channel
+    const { message } = await sendMessageToChannel(
+      request_id,
+      `🔄 **BRD Updated to v${enhanced.meta.version}** — ${enhanced.meta.title}\nAI has incorporated stakeholder feedback. Please review the updated document.`,
+      [
+        {
+          type: "brd_review",
+          brd_id: parseInt(brdId),
+          doc_id: enhanced.meta.doc_id,
+          title: enhanced.meta.title,
+          version: enhanced.meta.version,
+          request_id,
+        },
+      ],
+      req.user.id
+    );
+
+    await pool.query(
+      `INSERT INTO brd_channel_posts (brd_document_id, request_id, stream_message_id, posted_by)
+       VALUES ($1, $2, $3, $4)`,
+      [brdId, request_id, message.id, req.user.id]
+    );
+
+    res.json({ ...enhanced, _db_id: parseInt(brdId) });
+  } catch (err) {
+    console.error("BRD enhancement error:", err);
+    res.status(500).json({ message: "BRD enhancement failed", detail: err.message });
   }
 });
 

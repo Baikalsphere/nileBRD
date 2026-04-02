@@ -11,6 +11,7 @@ import {
   MessageInput,
   Thread,
   MessageSimple,
+  Attachment,
   useMessageContext,
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/v2/index.css";
@@ -18,6 +19,7 @@ import "./stream-overrides.css";
 import { getStreamClient, fetchStreamToken } from "@/lib/streamClient";
 import { VideoMeetingModal } from "./VideoMeetingModal";
 import { MemberManagementPanel } from "./MemberManagementPanel";
+import { BrdReviewCard } from "./BrdReviewCard";
 import {
   ArrowLeft, Video, Users, Loader2, MessageSquare, AlertCircle,
   Bookmark, BookmarkCheck, Sparkles, X, ChevronRight,
@@ -84,6 +86,23 @@ const ImportantCtx = createContext<{
   toggle: (id: string, text: string, sender: string) => void;
   isBA: boolean;
 }>({ importantIds: new Set(), toggle: () => {}, isBA: false });
+
+// Provides currentUser to BrdReviewCard rendered inside Stream Chat attachments
+const ChatUserCtx = createContext<CurrentUser | null>(null);
+
+type BrdAttachmentPayload = { brd_id: number; doc_id: string; title: string; version: string; request_id: number };
+
+// Custom attachment renderer — intercepts BRD review cards, delegates rest to Stream default
+function CustomAttachment(props: Parameters<typeof Attachment>[0]) {
+  const currentUser = useContext(ChatUserCtx);
+  const brdAtt = (props.attachments ?? []).find((a) => (a as { type?: string }).type === "brd_review") as
+    | (BrdAttachmentPayload & { type: string })
+    | undefined;
+  if (brdAtt && currentUser) {
+    return <BrdReviewCard attachment={brdAtt} currentUser={currentUser} />;
+  }
+  return <Attachment {...props} />;
+}
 
 // ── Custom message — bookmark for BA only ─────────────────────────────────────
 function CustomMessage() {
@@ -649,6 +668,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
   }, [request.id]);
 
   return (
+    <ChatUserCtx.Provider value={currentUser}>
     <ImportantCtx.Provider value={{ importantIds, toggle: toggleImportant, isBA }}>
       <div className="relative flex h-full flex-col bg-white">
 
@@ -741,7 +761,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
           ) : channel ? (
             <div className="absolute inset-0 bg-slate-50/30">
               <Chat client={getStreamClient()} theme="str-chat__theme-light">
-                <Channel channel={channel} Message={CustomMessage}>
+                <Channel channel={channel} Message={CustomMessage} Attachment={CustomAttachment}>
                   <Window>
                     <MessageList />
                     <MessageInput focus />
@@ -784,5 +804,6 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
         {meetingUrl && <VideoMeetingModal roomUrl={meetingUrl} onClose={() => setMeetingUrl(null)} />}
       </div>
     </ImportantCtx.Provider>
+    </ChatUserCtx.Provider>
   );
 }

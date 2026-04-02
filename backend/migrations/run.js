@@ -137,6 +137,30 @@ CREATE TABLE IF NOT EXISTS brd_documents (
 
 CREATE INDEX IF NOT EXISTS idx_brd_docs_request ON brd_documents(request_id);
 CREATE INDEX IF NOT EXISTS idx_brd_docs_author ON brd_documents(generated_by);
+
+-- Stakeholder reviews per BRD version
+CREATE TABLE IF NOT EXISTS brd_reviews (
+  id SERIAL PRIMARY KEY,
+  brd_document_id INTEGER REFERENCES brd_documents(id) ON DELETE CASCADE,
+  reviewer_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  reviewer_name VARCHAR(255),
+  status VARCHAR(50) DEFAULT 'pending',
+  comment TEXT,
+  reviewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(brd_document_id, reviewer_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_brd_reviews_doc ON brd_reviews(brd_document_id);
+
+-- Track BRD posts to Stream channels
+CREATE TABLE IF NOT EXISTS brd_channel_posts (
+  id SERIAL PRIMARY KEY,
+  brd_document_id INTEGER REFERENCES brd_documents(id) ON DELETE CASCADE,
+  request_id INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  stream_message_id VARCHAR(255),
+  posted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 async function migrate() {
