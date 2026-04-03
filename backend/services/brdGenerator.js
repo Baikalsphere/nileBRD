@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 env.cacheDir = join(__dirname, "../../models");
 env.allowLocalModels = true;
 
-const GEN_MODEL = "Xenova/flan-t5-base"; // Upgraded: better business text quality
+const GEN_MODEL = "Xenova/flan-t5-small"; // Memory-safe for cloud hosting
 
 let _generator = null;
 let _genPromise = null;
@@ -28,18 +28,14 @@ async function getGenerator() {
   if (_generator) return _generator;
   if (_genPromise) return _genPromise;
   _genPromise = (async () => {
-    console.log("[BRD Generator] Loading Flan-T5-base text generation model…");
+    console.log("[BRD Generator] Loading Flan-T5-small text generation model…");
     _generator = await pipeline("text2text-generation", GEN_MODEL, { quantized: true });
     console.log("[BRD Generator] Flan-T5 ready.");
     return _generator;
   })();
   return _genPromise;
 }
-
-// Pre-warm on server start (non-blocking)
-getGenerator().catch((e) =>
-  console.warn("[BRD Generator] Flan-T5 pre-load failed:", e.message)
-);
+// Model is loaded lazily on first BRD generation request — not on server start.
 
 // ─── MoSCoW priority classification ──────────────────────────────────────────
 const MUST_RE   = /\b(must|critical|mandatory|required|essential|shall|has to|need to|necessary)\b/i;

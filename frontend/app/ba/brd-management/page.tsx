@@ -6,7 +6,7 @@ import {
   Clock, Tag, Users, ClipboardList, ShieldAlert, Zap,
   BarChart3, BookOpen, Printer, RefreshCw,
   MessageSquare, ArrowUpRight, Loader2, Info,
-  Eye, Download, ChevronLeft, X, Send,
+  Eye, Download, ChevronLeft, X, Send, ArrowRight,
 } from "lucide-react";
 
 import { buildPdfHtml, openPdf, type BrdDoc } from "@/lib/brdPdf";
@@ -481,8 +481,9 @@ export default function BRDManagementPage() {
   const [viewingDoc, setViewingDoc] = useState<BrdDoc | null>(null);
   const [loadingId, setLoadingId]   = useState<number | null>(null);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
-  const [postingId, setPostingId]   = useState<number | null>(null);
+  const [postingId, setPostingId]     = useState<number | null>(null);
   const [enhancingId, setEnhancingId] = useState<number | null>(null);
+  const [sendingItId, setSendingItId] = useState<number | null>(null);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -553,6 +554,21 @@ export default function BRDManagementPage() {
       alert(`BRD posted to discussion channel. ${data.reviewers} reviewer(s) notified.`);
       fetchList();
     } finally { setPostingId(null); }
+  }, [fetchList]);
+
+  const sendToItManager = useCallback(async (id: number) => {
+    setSendingItId(id);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`${API}/api/stream/brd-documents/${id}/send-to-it-manager`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.message || "Failed to send to IT Manager"); return; }
+      alert(`BRD sent to IT Manager${data.itManager ? ` (${data.itManager})` : ""}. Status updated to Final.`);
+      fetchList();
+    } finally { setSendingItId(null); }
   }, [fetchList]);
 
   const enhanceFromFeedback = useCallback(async (id: number) => {
@@ -756,6 +772,19 @@ export default function BRDManagementPage() {
                           Enhance
                         </button>
                       )}
+
+                      {/* Send to IT Manager — only when Approved */}
+                      {brd.status === "Approved" && (
+                        <button
+                          onClick={() => sendToItManager(brd.id)}
+                          disabled={sendingItId === brd.id}
+                          title="Send approved BRD to IT Manager for implementation"
+                          className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                        >
+                          {sendingItId === brd.id ? <Loader2 className="size-3 animate-spin" /> : <ArrowRight className="size-3" />}
+                          Send to IT
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -769,7 +798,7 @@ export default function BRDManagementPage() {
       {brdList.length > 0 && (
         <p className="text-center text-xs text-slate-400">
           <Sparkles className="inline size-3 text-amber-400 mr-1" />
-          <strong>View</strong> reads the document · <strong>PDF</strong> exports it · <strong>Share</strong> posts it to the channel for stakeholder review · <strong>Enhance</strong> runs AI improvement from feedback
+          <strong>View</strong> reads the document · <strong>PDF</strong> exports it · <strong>Share</strong> posts it to the channel for stakeholder review · <strong>Enhance</strong> runs AI improvement from feedback · <strong>Send to IT</strong> forwards the approved BRD to the IT Manager
         </p>
       )}
 

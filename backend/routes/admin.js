@@ -1,5 +1,5 @@
 import express from "express";
-import { getAllUsers, createAdminUser, updateUserName } from "../services/adminService.js";
+import { getAllUsers, createAdminUser, updateUserName, setItManager, deleteUser } from "../services/adminService.js";
 import { 
   authenticateAdmin, 
   adminLoginLimiter, 
@@ -119,6 +119,32 @@ router.patch("/users/:id/name", authenticateAdmin, async (req, res) => {
     res.json({ message: "Name updated", user });
   } catch (error) {
     console.error("Update name error:", error);
+    res.status(error.message === "User not found" ? 404 : 500).json({ message: error.message });
+  }
+});
+
+// Set IT Manager — only one IT user can be IT Manager at a time
+router.patch("/users/:id/it-manager", authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await setItManager(parseInt(id, 10));
+    await logAdminAction(req.admin.id, "SET_IT_MANAGER", { userId: id, email: user.email });
+    res.json({ message: "IT Manager set", user });
+  } catch (error) {
+    console.error("Set IT manager error:", error);
+    res.status(error.message === "User not found or not an IT user" ? 400 : 500).json({ message: error.message });
+  }
+});
+
+// Delete user — removes user and all related data
+router.delete("/users/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await deleteUser(parseInt(id, 10));
+    await logAdminAction(req.admin.id, "DELETE_USER", { userId: id, email: user.email });
+    res.json({ message: "User deleted", user });
+  } catch (error) {
+    console.error("Delete user error:", error);
     res.status(error.message === "User not found" ? 404 : 500).json({ message: error.message });
   }
 });

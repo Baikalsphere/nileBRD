@@ -10,6 +10,7 @@ import discussionRoutes from "./routes/discussions.js";
 import streamRoutes from "./routes/stream.js";
 import pool from "./config/db.js";
 import { initChat } from "./socket/chat.js";
+import { runMigrations } from "./migrations/run.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -53,7 +54,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: "Internal server error", error: err.message });
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
-  console.log(`🔗 Frontend URL: ${FRONTEND_URL}`);
+// Run migrations before accepting traffic
+runMigrations().then(() => {
+  httpServer.listen(PORT, () => {
+    console.log(`✅ Server running on http://localhost:${PORT}`);
+    console.log(`🔗 Frontend URL: ${FRONTEND_URL}`);
+  });
+}).catch((err) => {
+  console.error("❌ Failed to run migrations on startup:", err);
+  process.exit(1);
 });

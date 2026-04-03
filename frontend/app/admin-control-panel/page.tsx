@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Clock,
   Code2,
+  Crown,
   Edit2,
   Eye,
   EyeOff,
@@ -19,6 +20,7 @@ import {
   RefreshCw,
   Search,
   Shield,
+  Trash2,
   User,
   Users,
   X,
@@ -36,6 +38,7 @@ interface User {
   email: string;
   role: UserRole;
   name: string | null;
+  is_it_manager: boolean;
   created_at: string;
 }
 
@@ -192,6 +195,9 @@ export default function AdminPanel() {
   const [successMessage, setSuccessMessage] = useState("");
   const [createError, setCreateError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [settingManagerId, setSettingManagerId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
 
   const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -215,6 +221,37 @@ export default function AdminPanel() {
       const data = await res.json();
       setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, name: data.user.name } : u)));
     }
+  };
+
+  const setAsItManager = async (userId: number) => {
+    setSettingManagerId(userId);
+    const token = localStorage.getItem("adminToken");
+    const res = await fetch(`${API}/api/admin/users/${userId}/it-manager`, {
+      method: "PATCH",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      setSuccessMessage("IT Manager designation updated.");
+      await fetchUsers();
+      setTimeout(() => setSuccessMessage(""), 4000);
+    }
+    setSettingManagerId(null);
+  };
+
+  const handleDeleteUser = async (userId: number) => {
+    setDeletingId(userId);
+    setConfirmDeleteId(null);
+    const token = localStorage.getItem("adminToken");
+    const res = await fetch(`${API}/api/admin/users/${userId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      setSuccessMessage("User and all associated data deleted.");
+      setTimeout(() => setSuccessMessage(""), 4000);
+    }
+    setDeletingId(null);
   };
 
   const verifyAdminToken = async (token: string) => {
@@ -559,6 +596,7 @@ export default function AdminPanel() {
                       <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Display Name</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Role</th>
                       <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Joined</th>
+                      <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -584,15 +622,68 @@ export default function AdminPanel() {
                             <InlineNameEditor userId={user.id} name={name} onSave={saveUserName} />
                           </td>
                           <td className="px-5 py-3.5">
-                            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${role.color} ${role.bg}`}>
-                              {role.icon}
-                              {role.label}
-                            </span>
+                            <div className="flex flex-col gap-1.5">
+                              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${role.color} ${role.bg}`}>
+                                {role.icon}
+                                {role.label}
+                              </span>
+                              {user.is_it_manager && (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
+                                  <Crown className="size-2.5" /> IT Manager
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-1.5 text-xs text-slate-400">
                               <Clock className="size-3.5" />
                               {new Date(user.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                            </div>
+                          </td>
+                          {/* Actions */}
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2">
+                              {/* Set as IT Manager — only for IT role users */}
+                              {user.role === "it" && !user.is_it_manager && (
+                                <button
+                                  onClick={() => setAsItManager(user.id)}
+                                  disabled={settingManagerId === user.id}
+                                  title="Designate as IT Manager"
+                                  className="flex items-center gap-1.5 rounded-lg border border-amber-700/40 bg-amber-950/30 px-2.5 py-1.5 text-xs font-semibold text-amber-300 transition-all hover:bg-amber-900/40 disabled:opacity-50"
+                                >
+                                  {settingManagerId === user.id
+                                    ? <RefreshCw className="size-3 animate-spin" />
+                                    : <Crown className="size-3" />}
+                                  Set as IT Manager
+                                </button>
+                              )}
+                              {/* Confirm delete flow */}
+                              {confirmDeleteId === user.id ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs text-slate-400">Confirm?</span>
+                                  <button
+                                    onClick={() => handleDeleteUser(user.id)}
+                                    disabled={deletingId === user.id}
+                                    className="rounded-lg bg-red-700 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+                                  >
+                                    {deletingId === user.id ? <RefreshCw className="size-3 animate-spin" /> : "Yes, Delete"}
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDeleteId(null)}
+                                    className="rounded-lg border border-slate-600 px-2.5 py-1.5 text-xs text-slate-400 hover:text-slate-200"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDeleteId(user.id)}
+                                  className="flex items-center gap-1.5 rounded-lg border border-red-900/40 bg-red-950/30 px-2.5 py-1.5 text-xs font-semibold text-red-400 transition-all hover:bg-red-900/40"
+                                >
+                                  <Trash2 className="size-3" />
+                                  Delete
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>

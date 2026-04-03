@@ -161,19 +161,33 @@ CREATE TABLE IF NOT EXISTS brd_channel_posts (
   posted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
   posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- IT Manager flag on users
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_it_manager BOOLEAN DEFAULT FALSE;
+
+-- Track BRD submissions to IT Manager
+CREATE TABLE IF NOT EXISTS brd_it_submissions (
+  id SERIAL PRIMARY KEY,
+  brd_document_id INTEGER REFERENCES brd_documents(id) ON DELETE CASCADE,
+  submitted_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  it_manager_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_brd_it_submissions_brd ON brd_it_submissions(brd_document_id);
 `;
 
-async function migrate() {
+export async function runMigrations() {
   try {
     console.log("🔄 Running migrations...");
-    
+
     const statements = schema.split(';').filter(s => s.trim());
     for (const statement of statements) {
       if (statement.trim()) {
         await pool.query(statement);
       }
     }
-    
+
     console.log("✅ Migrations completed successfully!");
   } catch (error) {
     console.error("❌ Migration failed:", error);
@@ -181,4 +195,7 @@ async function migrate() {
   }
 }
 
-migrate();
+// Allow direct execution: node migrations/run.js
+if (process.argv[1].includes("run.js")) {
+  runMigrations();
+}

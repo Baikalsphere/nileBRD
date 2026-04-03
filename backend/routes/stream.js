@@ -583,6 +583,90 @@ router.post("/brd-documents/:brdId/enhance", authenticateToken, async (req, res)
   }
 });
 
+// POST /api/stream/brd-documents/:brdId/send-to-it-manager — BA sends approved BRD to IT Manager
+router.post("/brd-documents/:brdId/send-to-it-manager", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { brdId } = req.params;
+
+    // Verify BRD is Approved and belongs to this BA
+    const { rows: brdRows } = await pool.query(
+      `SELECT bd.id, bd.status, bd.version, bd.content->'meta'->>'title' AS title,
+              r.title AS request_title, r.req_number
+       FROM brd_documents bd JOIN requests r ON r.id = bd.request_id
+       WHERE bd.id = $1 AND bd.generated_by = $2`,
+      [brdId, req.user.id]
+    );
+    if (!brdRows.length) return res.status(404).json({ message: "BRD not found or not yours" });
+    if (brdRows[0].status !== "Approved") {
+      return res.status(400).json({ message: "BRD must be Approved before sending to IT Manager" });
+    }
+
+    // Find current IT Manager
+    const { rows: managers } = await pool.query(
+      "SELECT id, name, email FROM users WHERE is_it_manager = TRUE LIMIT 1"
+    );
+    if (!managers.length) {
+      return res.status(404).json({ message: "No IT Manager assigned. Ask admin to designate one." });
+    }
+    const itManager = managers[0];
+
+    // Mark BRD as Final
+    await pool.query(
+      "UPDATE brd_documents SET status = 'Final', updated_at = NOW() WHERE id = $1",
+      [brdId]
+    );
+
+    // Record the submission
+    await pool.query(
+      `INSERT INTO brd_it_submissions (brd_document_id, submitted_by, it_manager_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT DO NOTHING`,
+      [brdId, req.user.id, itManager.id]
+    );
+
+    res.json({ ok: true, itManager: itManager.name || itManager.email });
+  } catch (err) {
+    console.error("Send to IT Manager error:", err);
+    res.status(500).json({ message: "Failed to send BRD to IT Manager", detail: err.message });
+  }
+});
+
+// GET /api/stream/approved-brds — IT users see all Approved/Final BRDs submitted to them
+router.get("/approved-brds", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    const { rows } = await pool.query(
+      `SELECT bd.id, bd.doc_id, bd.version, bd.status,
+              bd.content->'meta'->>'title' AS title,
+              bd.content->'meta'->>'category' AS category,
+              bd.content->'meta'->>'priority' AS priority,
+              bd.content->'sections'->'brd_readiness'->>'score' AS readiness_score,
+              bd.content->'sections'->'executive_summary'->>'text' AS executive_summary,
+              bd.content AS content,
+              r.id AS request_id, r.title AS request_title, r.req_number, r.priority AS req_priority,
+              r.category AS req_category,
+              u.name AS author_name, u.email AS author_email,
+              bd.generated_at, bd.updated_at,
+              sub.submitted_at,
+              COUNT(br.id) FILTER (WHERE br.status = 'approved') AS reviews_approved,
+              COUNT(br.id) AS reviews_total
+       FROM brd_documents bd
+       JOIN requests r ON r.id = bd.request_id
+       JOIN users u ON u.id = bd.generated_by
+       LEFT JOIN brd_reviews br ON br.brd_document_id = bd.id
+       LEFT JOIN brd_it_submissions sub ON sub.brd_document_id = bd.id
+       WHERE bd.status IN ('Approved', 'Final')
+       GROUP BY bd.id, r.id, u.id, sub.submitted_at
+       ORDER BY COALESCE(sub.submitted_at, bd.updated_at) DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Fetch approved BRDs error:", err);
+    res.status(500).json({ message: "Failed to fetch approved BRDs" });
+  }
+});
+
 // POST /api/stream/daily/rooms — create a Daily.co video room
 router.post("/daily/rooms", authenticateToken, async (req, res) => {
   try {

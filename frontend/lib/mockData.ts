@@ -25,6 +25,7 @@ export const baNav: NavItem[] = [
 
 export const itNav: NavItem[] = [
   { label: "Dashboard", href: "/it/dashboard", icon: "layout-dashboard" },
+  { label: "Approved BRDs", href: "/it/approved-brds", icon: "file-check-2" },
   { label: "Feasibility Analysis", href: "/it/feasibility-analysis", icon: "scan-search" },
   { label: "Development Tracking", href: "/it/development-tracking", icon: "kanban-square" },
   { label: "Test Cases & SIT", href: "/it/test-cases-sit", icon: "flask-conical" },
