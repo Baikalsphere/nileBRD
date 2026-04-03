@@ -4,8 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import {
   FileText, CheckCircle2, XCircle, Clock, MessageSquare,
   ThumbsUp, AlertCircle, Loader2, ChevronRight, Sparkles,
-  ExternalLink, RefreshCw,
+  ExternalLink, RefreshCw, Printer,
 } from "lucide-react";
+import { openPdf, type BrdDoc } from "@/lib/brdPdf";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -43,6 +44,7 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
+  const [openingPdf, setOpeningPdf] = useState(false);
   const [comment, setComment] = useState("");
   const [myAction, setMyAction] = useState<"approve" | "changes" | null>(null);
 
@@ -89,6 +91,21 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
     }
   };
 
+  const handleOpenPdf = async () => {
+    setOpeningPdf(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`${API}/api/stream/brd-documents/${attachment.brd_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { alert("Could not load BRD document."); return; }
+      const doc: BrdDoc = await res.json();
+      openPdf(doc);
+    } finally {
+      setOpeningPdf(false);
+    }
+  };
+
   const enhanceBrd = async () => {
     setEnhancing(true);
     try {
@@ -131,6 +148,14 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
             )}
           </div>
         </div>
+        <button
+          onClick={handleOpenPdf}
+          disabled={openingPdf}
+          title="Open BRD as PDF"
+          className="flex size-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-violet-100 hover:text-violet-600 transition-colors disabled:opacity-50"
+        >
+          {openingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+        </button>
         {isBA && (
           <a
             href="/ba/brd-management"

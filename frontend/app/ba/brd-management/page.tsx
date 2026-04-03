@@ -9,6 +9,8 @@ import {
   Eye, Download, ChevronLeft, X, Send,
 } from "lucide-react";
 
+import { buildPdfHtml, openPdf, type BrdDoc } from "@/lib/brdPdf";
+
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -31,34 +33,6 @@ interface BrdListItem {
   reviews_total: string;
 }
 
-interface FRItem   { id: string; description: string; priority: string; source: string; original: string }
-interface NFRItem  { id: string; category: string; description: string }
-interface RiskItem { id: string; description: string; impact: string; probability: string; mitigation: string }
-interface ActionItem { id: string; description: string; status: string }
-interface Stakeholder { name: string; role: string }
-interface ReadinessCheck { label: string; pass: boolean }
-
-interface BrdDoc {
-  _db_id?: number;
-  _status?: string;
-  meta: {
-    doc_id: string; version: string; status: string; request_number: string;
-    title: string; category: string; priority: string; generated_at: string;
-    effective_date: string; ai_models: string[]; source_messages: number;
-  };
-  sections: {
-    executive_summary: { number: string; title: string; text: string };
-    objective: { number: string; title: string; text: string; goals: string[] };
-    scope: { number: string; title: string; in_scope: string[]; out_of_scope: string[] };
-    stakeholders: { number: string; title: string; list: Stakeholder[] };
-    functional_requirements: { number: string; title: string; items: FRItem[] };
-    non_functional_requirements: { number: string; title: string; items: NFRItem[] };
-    risk_register: { number: string; title: string; items: RiskItem[] };
-    action_items: { number: string; title: string; items: ActionItem[] };
-    brd_readiness: { number: string; title: string; checks: ReadinessCheck[]; score: number; readinessLevel: string };
-    appendix: { title: string; messages: { sender: string; text: string; marked_at: string }[]; keywords: string[] };
-  };
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const PRIORITY_COLORS: Record<string, string> = {
@@ -80,8 +54,8 @@ const PRIORITY_DOT: Record<string, string> = {
   Low: "bg-emerald-400", Medium: "bg-amber-400", High: "bg-orange-500", Critical: "bg-rose-500",
 };
 
-// ─── PDF Generator ────────────────────────────────────────────────────────────
-function buildPdfHtml(doc: BrdDoc): string {
+// ─── PDF Generator (imported from @/lib/brdPdf) ───────────────────────────────
+function _buildPdfHtml(doc: BrdDoc): string {
   const s = doc.sections;
   const meta = doc.meta;
 
@@ -309,13 +283,6 @@ function buildPdfHtml(doc: BrdDoc): string {
 </html>`;
 }
 
-function openPdf(doc: BrdDoc) {
-  const html = buildPdfHtml(doc);
-  const win = window.open("", "_blank");
-  if (!win) { alert("Allow popups for this site to generate the PDF."); return; }
-  win.document.write(html);
-  win.document.close();
-}
 
 // ─── BRD Viewer Modal ─────────────────────────────────────────────────────────
 function BrdViewerModal({ doc, onClose, onUpdateStatus }: { doc: BrdDoc; onClose: () => void; onUpdateStatus: (s: string) => void }) {
