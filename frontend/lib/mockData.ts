@@ -10,7 +10,6 @@ export const stakeholderNav: NavItem[] = [
   { label: "Dashboard", href: "/stakeholder/dashboard", icon: "layout-dashboard" },
   { label: "Submit Business Problem", href: "/stakeholder/submit-problem", icon: "file-input" },
   { label: "My Requests", href: "/stakeholder/my-requests", icon: "list-checks" },
-  { label: "Approvals", href: "/stakeholder/approvals", icon: "badge-check" },
   { label: "UAT Testing", href: "/stakeholder/uat-testing", icon: "clipboard-check" },
   { label: "AI Assistant", href: "/stakeholder/ai-assistant", icon: "sparkles" },
 ];
