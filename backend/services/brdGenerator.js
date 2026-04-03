@@ -19,7 +19,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 env.cacheDir = join(__dirname, "../../models");
 env.allowLocalModels = true;
 
-const GEN_MODEL = "Xenova/flan-t5-small";
+const GEN_MODEL = "Xenova/flan-t5-base"; // Upgraded: better business text quality
 
 let _generator = null;
 let _genPromise = null;
@@ -28,7 +28,7 @@ async function getGenerator() {
   if (_generator) return _generator;
   if (_genPromise) return _genPromise;
   _genPromise = (async () => {
-    console.log("[BRD Generator] Loading Flan-T5 text generation model…");
+    console.log("[BRD Generator] Loading Flan-T5-base text generation model…");
     _generator = await pipeline("text2text-generation", GEN_MODEL, { quantized: true });
     console.log("[BRD Generator] Flan-T5 ready.");
     return _generator;
@@ -151,6 +151,32 @@ function cap(str = "") {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+// ─── Conversation text cleaner ────────────────────────────────────────────────
+// Strips first-person language, action-item preambles and conversational filler
+// before using chat messages as formal business requirement text.
+function cleanToRequirement(raw) {
+  let text = String(raw)
+    // Remove action-item / confirmation openers
+    .replace(/^(next step[s]?[:\s,]*|understood[.\s,]*|noted[.\s,]*|agreed[.\s,]*|sure[,\s]+|ok[ay]*[,.\s]+|thanks?[,.\s]+|do we have[^?]*\??\s*)/i, "")
+    // Remove first-person starters like "From my side," "From our end,"
+    .replace(/^(from (my|our|the) (side|end|perspective)[,:\s]*)/i, "")
+    // Remove first-person pronouns mid-sentence
+    .replace(/\b(I've|we've|I'll|we'll|I'm|we're)\b/gi, "the team")
+    .replace(/\b(I |me |my |we |us |our )\b/gi, "the organisation ")
+    // Remove filler openers
+    .replace(/^(also\s+)?(noticing|noticed|noticing that|aware that|seeing that)\s+/i, "There are ")
+    .replace(/^(there (is|are|have been)\s+some\s+)/i, "there are ")
+    // Strip question text (action items often end in "?")
+    .replace(/\?$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // If cleaning ate too much, fall back to raw
+  if (text.length < 10) text = raw.trim();
+
+  return cap(text);
+}
+
 // ─── Flan-T5 text generation ─────────────────────────────────────────────────
 async function generateText(prompt, maxTokens = 120) {
   try {
@@ -170,34 +196,95 @@ async function generateText(prompt, maxTokens = 120) {
 
 // ─── Formal requirement rewriter ─────────────────────────────────────────────
 async function formaliseRequirement(text) {
-  const prompt = `Rewrite as a formal business requirement using "The system shall" language: ${text}`;
-  const out = await generateText(prompt, 60);
-  // Validate: must start with "The" or similar formal language
-  if (out.length > 10 && /^(The|System|Users|All|Data)/i.test(out)) return cap(out);
-  // Fallback: simple rule-based formalisation
-  const lower = text.toLowerCase();
-  if (lower.startsWith("the system") || lower.startsWith("system shall")) return cap(text);
-  return `The system shall ${text.charAt(0).toLowerCase() + text.slice(1)}`;
+  const cleaned = cleanToRequirement(text);
+  const lower = cleaned.toLowerCase();
+
+  // Already formal — return as-is
+  if (/^the system shall/i.test(lower)) return cap(cleaned);
+
+  const prompt = `Rewrite as a concise formal business system requirement starting with "The system shall". Input: ${cleaned.slice(0, 180)}`;
+  const out = await generateText(prompt, 70);
+  if (
+    out.length > 15 &&
+    /^The system shall/i.test(out) &&
+    out.length < 300 &&
+    // Reject if Flan-T5 just echoed the input
+    !out.toLowerCase().startsWith(cleaned.slice(0, 20).toLowerCase())
+  ) {
+    return cap(out);
+  }
+
+  // Smart rule-based fallback — build proper "The system shall" from cleaned text
+  const core = cleaned
+    .replace(/^(vendor costs have (gone up|increased)|costs have (gone up|increased))/i,
+      "track and manage vendor costs that have increased")
+    .replace(/^(inefficien(cy|cies) in|some inefficien)/i, "identify and resolve inefficiencies in")
+    .replace(/^(there are (some\s+)?)/i, "");
+
+  return `The system shall ${core.charAt(0).toLowerCase() + core.slice(1)}`;
 }
 
 // ─── Executive summary generation ────────────────────────────────────────────
 async function generateExecutiveSummary(analysis, requestInfo) {
-  const reqList = analysis.key_requirements.slice(0, 3).join("; ");
-  const prompt = `Write a 2-sentence executive summary for a business requirements document. Project: ${requestInfo.title}. Category: ${requestInfo.category || "General"}. Key requirements: ${reqList}.`;
-  const out = await generateText(prompt, 100);
-  if (out.length > 30) return out;
-  // Fallback to template
-  return `This Business Requirements Document defines the functional and non-functional requirements for "${requestInfo.title}". ` +
-    `The objective is to ${analysis.executive_summary || `deliver ${requestInfo.category?.toLowerCase() || "business"} capabilities that meet stakeholder needs`}.`;
+  // Build cleaned requirement snippets — never use raw chat text
+  const cleanedReqs = (analysis.key_requirements || [])
+    .slice(0, 3)
+    .map(cleanToRequirement)
+    .filter((r) => r.length > 8);
+
+  const keywords = (analysis.keywords || []).slice(0, 6).join(", ");
+  const domain   = requestInfo.category || "General";
+  const title    = requestInfo.title || "this initiative";
+  const priority = (requestInfo.priority || "Medium").toLowerCase();
+
+  const prompt =
+    `Write a 2-sentence professional executive summary for a Business Requirements Document.\n` +
+    `Project: "${title}". Domain: ${domain}. Priority: ${priority}.\n` +
+    `Key topics: ${keywords || domain}.\n` +
+    `Executive Summary:`;
+
+  const out = await generateText(prompt, 120);
+  if (out.length > 40 && !out.includes("undefined") && !out.includes(prompt.slice(0, 20))) {
+    return out;
+  }
+
+  // Fallback: synthesise from metadata — NEVER paste raw chat text
+  const focus = cleanedReqs.length
+    ? cleanedReqs[0].charAt(0).toLowerCase() + cleanedReqs[0].slice(1)
+    : `${domain.toLowerCase()} operational improvements`;
+
+  return (
+    `This Business Requirements Document defines the functional and non-functional requirements ` +
+    `for the "${cap(title)}" initiative within the ${domain} domain. ` +
+    `The project focuses on ${focus}, with ${priority} priority to deliver measurable ` +
+    `business outcomes and ${keywords ? `improvements in ${keywords}` : "operational efficiency gains"}.`
+  );
 }
 
 // ─── Business objective generation ───────────────────────────────────────────
 async function generateObjective(analysis, requestInfo) {
-  const prompt = `Write a business objective statement for a project titled "${requestInfo.title}" with priority ${requestInfo.priority}. Include the business purpose and expected outcome in 2 sentences.`;
-  const out = await generateText(prompt, 80);
-  if (out.length > 30) return out;
-  return `To deliver a solution that addresses the identified business need for "${requestInfo.title}". ` +
-    `This initiative aims to improve operational efficiency, reduce manual effort, and provide measurable business value aligned with organisational goals.`;
+  const domain   = requestInfo.category || "General";
+  const title    = requestInfo.title || "this initiative";
+  const priority = (requestInfo.priority || "Medium").toLowerCase();
+  const keywords = (analysis.keywords || []).slice(0, 4).join(", ");
+
+  const prompt =
+    `Write a 2-sentence business objective statement.\n` +
+    `Project: "${title}". Domain: ${domain}. Priority: ${priority}.\n` +
+    `State the business purpose and the expected measurable outcome.\n` +
+    `Objective:`;
+
+  const out = await generateText(prompt, 90);
+  if (out.length > 30 && !out.includes("undefined") && !out.includes(prompt.slice(0, 20))) {
+    return out;
+  }
+
+  return (
+    `To deliver a comprehensive solution that addresses the identified ${domain.toLowerCase()} ` +
+    `business challenges outlined in the "${cap(title)}" initiative, with ${priority} priority focus. ` +
+    `This initiative aims to improve ${keywords || domain.toLowerCase() + " efficiency"}, ` +
+    `reduce operational costs, and provide measurable business value aligned with organisational goals.`
+  );
 }
 
 // ─── AI-driven BRD enhancement from stakeholder feedback ─────────────────────
@@ -224,10 +311,14 @@ export async function enhanceBRD(existingBrd, improvementComments, requestInfo) 
   const docId = `BRD-${requestInfo.req_number || requestInfo.id}-v${newVersion}`;
 
   // 1. Regenerate executive summary incorporating feedback
-  const execPrompt = `Revise this business requirements document executive summary based on stakeholder feedback. Original: "${ex.executive_summary.text}". Feedback: "${commentsText}". Write an improved 2-sentence executive summary.`;
+  const execPrompt =
+    `Revise this Business Requirements Document executive summary based on stakeholder feedback.\n` +
+    `Original: "${ex.executive_summary.text.slice(0, 300)}"\n` +
+    `Feedback: "${commentsText.slice(0, 300)}"\n` +
+    `Write an improved 2-sentence professional executive summary:`;
   const newExecSummary = await generateText(execPrompt, 120);
 
-  // 2. Extract new requirements from feedback comments
+  // 2. Extract new requirements from feedback comments (use cleaned originals)
   const existingReqTexts = ex.functional_requirements.items.map(
     (fr) => fr.original || fr.description
   );
@@ -308,9 +399,9 @@ export async function enhanceBRD(existingBrd, improvementComments, requestInfo) 
       executive_summary: {
         ...ex.executive_summary,
         text:
-          newExecSummary.length > 30
+          newExecSummary.length > 40 && !newExecSummary.includes("undefined")
             ? newExecSummary
-            : `${ex.executive_summary.text} This version incorporates ${improvementComments.length} stakeholder review(s).`,
+            : `${ex.executive_summary.text} This version incorporates ${improvementComments.length} stakeholder review(s) and addresses raised concerns.`,
       },
       scope: {
         ...ex.scope,
@@ -393,10 +484,11 @@ export async function generateBRD(analysis, requestInfo, messages = []) {
     status: "Open",
   }));
 
-  // ── Goals (derived from requirements bucketing) ───────────────────────────
+  // ── Goals (cleaned from requirements — no raw chat text) ─────────────────
   const goals = analysis.key_requirements
     .slice(0, 4)
-    .map((r) => cap(r.replace(/^(the system shall|must|should|need to)\s*/i, "")));
+    .map((r) => cleanToRequirement(r).replace(/^(the system shall|must|should|need to)\s*/i, ""))
+    .map(cap);
 
   // ── Assemble BRD ──────────────────────────────────────────────────────────
   return {
@@ -411,7 +503,7 @@ export async function generateBRD(analysis, requestInfo, messages = []) {
       priority: requestInfo.priority || "Medium",
       generated_at: now.toISOString(),
       effective_date: now.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
-      ai_models: ["Xenova/nli-deberta-v3-small (zero-shot classification)", "Xenova/flan-t5-small (text generation)"],
+      ai_models: ["Xenova/nli-deberta-v3-small (zero-shot classification)", "Xenova/flan-t5-base (text generation)"],
       source_messages: analysis.message_count,
     },
     sections: {
