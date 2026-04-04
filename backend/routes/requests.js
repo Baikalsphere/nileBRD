@@ -23,6 +23,158 @@ const upload = multer({
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// GET /api/requests/dashboard-stats — aggregated stats for BA or Stakeholder dashboard
+router.get("/dashboard-stats", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role   = req.user.role;
+
+    if (role === "ba") {
+      const [statusCounts, priorityCounts, brdStats, recentRequests, recentBrds, trendData, pendingReviewCount] = await Promise.all([
+
+        pool.query(
+          `SELECT status, COUNT(*) AS count FROM requests
+           WHERE assigned_ba_id = $1 GROUP BY status`, [userId]),
+
+        pool.query(
+          `SELECT priority, COUNT(*) AS count FROM requests
+           WHERE assigned_ba_id = $1 GROUP BY priority`, [userId]),
+
+        pool.query(
+          `SELECT bd.status,
+                  COUNT(bd.id)                                                 AS count,
+                  SUM(COUNT(br.id) FILTER (WHERE br.status = 'pending'))       OVER () AS total_pending,
+                  SUM(COUNT(br.id) FILTER (WHERE br.status = 'approved'))      OVER () AS total_approved,
+                  SUM(COUNT(br.id) FILTER (WHERE br.status = 'changes_requested')) OVER () AS total_changes
+           FROM brd_documents bd
+           LEFT JOIN brd_reviews br ON br.brd_document_id = bd.id
+           WHERE bd.generated_by = $1
+           GROUP BY bd.status`, [userId]),
+
+        pool.query(
+          `SELECT r.id, r.req_number, r.title, r.status, r.priority, r.category, r.created_at, r.updated_at,
+                  u.name AS stakeholder_name, u.email AS stakeholder_email
+           FROM requests r LEFT JOIN users u ON u.id = r.stakeholder_id
+           WHERE r.assigned_ba_id = $1 ORDER BY r.updated_at DESC LIMIT 6`, [userId]),
+
+        pool.query(
+          `SELECT bd.id, bd.doc_id, bd.version, bd.status,
+                  bd.content->'meta'->>'title' AS brd_title,
+                  r.req_number, r.title AS request_title, bd.updated_at,
+                  COUNT(br.id) FILTER (WHERE br.status = 'pending')            AS reviews_pending,
+                  COUNT(br.id) FILTER (WHERE br.status = 'approved')           AS reviews_approved,
+                  COUNT(br.id) FILTER (WHERE br.status = 'changes_requested')  AS reviews_changes,
+                  COUNT(br.id)                                                  AS reviews_total
+           FROM brd_documents bd
+           JOIN requests r ON r.id = bd.request_id
+           LEFT JOIN brd_reviews br ON br.brd_document_id = bd.id
+           WHERE bd.generated_by = $1
+           GROUP BY bd.id, r.id ORDER BY bd.updated_at DESC LIMIT 6`, [userId]),
+
+        pool.query(
+          `SELECT TO_CHAR(d.day, 'Mon DD') AS label, COALESCE(c.count, 0) AS count
+           FROM generate_series(NOW()::date - 13, NOW()::date, '1 day'::interval) AS d(day)
+           LEFT JOIN (
+             SELECT DATE(created_at) AS day, COUNT(*) AS count
+             FROM requests WHERE assigned_ba_id = $1 GROUP BY DATE(created_at)
+           ) c ON c.day = d.day ORDER BY d.day`, [userId]),
+
+        pool.query(
+          `SELECT COUNT(DISTINCT bd.id) AS count
+           FROM brd_documents bd JOIN brd_reviews br ON br.brd_document_id = bd.id
+           WHERE bd.generated_by = $1 AND br.status = 'pending'`, [userId]),
+      ]);
+
+      const totalRequests = statusCounts.rows.reduce((s, r) => s + parseInt(r.count), 0);
+      const totalBrds     = brdStats.rows.reduce((s, r) => s + parseInt(r.count), 0);
+      const reviewRow     = brdStats.rows[0] || {};
+
+      res.json({
+        role: "ba",
+        requests: {
+          total:       totalRequests,
+          by_status:   Object.fromEntries(statusCounts.rows.map(r => [r.status, parseInt(r.count)])),
+          by_priority: Object.fromEntries(priorityCounts.rows.map(r => [r.priority, parseInt(r.count)])),
+          recent:      recentRequests.rows,
+          trend:       trendData.rows,
+        },
+        brds: {
+          total:                totalBrds,
+          by_status:            Object.fromEntries(brdStats.rows.map(r => [r.status, parseInt(r.count)])),
+          recent:               recentBrds.rows,
+          pending_review_count: parseInt(pendingReviewCount.rows[0]?.count ?? 0),
+          total_pending:        parseInt(reviewRow.total_pending ?? 0),
+          total_approved:       parseInt(reviewRow.total_approved ?? 0),
+          total_changes:        parseInt(reviewRow.total_changes ?? 0),
+        },
+      });
+
+    } else if (role === "stakeholder") {
+      const [statusCounts, priorityCounts, brdReviews, recentRequests, trendData, sharedCount] = await Promise.all([
+
+        pool.query(
+          `SELECT status, COUNT(*) AS count FROM requests
+           WHERE stakeholder_id = $1 GROUP BY status`, [userId]),
+
+        pool.query(
+          `SELECT priority, COUNT(*) AS count FROM requests
+           WHERE stakeholder_id = $1 GROUP BY priority`, [userId]),
+
+        pool.query(
+          `SELECT bd.id, bd.doc_id, bd.version, bd.status AS brd_status,
+                  bd.content->'meta'->>'title' AS brd_title,
+                  r.req_number, r.title AS request_title, bd.updated_at,
+                  br.status AS review_status, br.comment
+           FROM brd_reviews br
+           JOIN brd_documents bd ON bd.id = br.brd_document_id
+           JOIN requests r ON r.id = bd.request_id
+           WHERE br.reviewer_id = $1
+           ORDER BY bd.updated_at DESC LIMIT 10`, [userId]),
+
+        pool.query(
+          `SELECT r.id, r.req_number, r.title, r.status, r.priority, r.category, r.created_at, r.updated_at,
+                  u.name AS ba_name, u.email AS ba_email
+           FROM requests r LEFT JOIN users u ON u.id = r.assigned_ba_id
+           WHERE r.stakeholder_id = $1 ORDER BY r.updated_at DESC LIMIT 6`, [userId]),
+
+        pool.query(
+          `SELECT TO_CHAR(d.day, 'Mon DD') AS label, COALESCE(c.count, 0) AS count
+           FROM generate_series(NOW()::date - 13, NOW()::date, '1 day'::interval) AS d(day)
+           LEFT JOIN (
+             SELECT DATE(created_at) AS day, COUNT(*) AS count
+             FROM requests WHERE stakeholder_id = $1 GROUP BY DATE(created_at)
+           ) c ON c.day = d.day ORDER BY d.day`, [userId]),
+
+        pool.query(
+          `SELECT COUNT(DISTINCT r.id) AS count
+           FROM requests r JOIN channel_members cm ON cm.request_id = r.id AND cm.user_id = $1
+           WHERE r.stakeholder_id != $1`, [userId]),
+      ]);
+
+      const totalRequests = statusCounts.rows.reduce((s, r) => s + parseInt(r.count), 0);
+
+      res.json({
+        role: "stakeholder",
+        requests: {
+          total:       totalRequests,
+          by_status:   Object.fromEntries(statusCounts.rows.map(r => [r.status, parseInt(r.count)])),
+          by_priority: Object.fromEntries(priorityCounts.rows.map(r => [r.priority, parseInt(r.count)])),
+          recent:      recentRequests.rows,
+          trend:       trendData.rows,
+        },
+        brd_reviews:  brdReviews.rows,
+        shared_count: parseInt(sharedCount.rows[0]?.count ?? 0),
+      });
+
+    } else {
+      res.status(403).json({ message: "Not available for this role" });
+    }
+  } catch (error) {
+    console.error("Dashboard stats error:", error);
+    res.status(500).json({ message: "Error fetching dashboard stats" });
+  }
+});
+
 // GET /api/requests/ba-list
 router.get("/ba-list", authenticateToken, async (req, res) => {
   try {
