@@ -175,6 +175,41 @@ CREATE TABLE IF NOT EXISTS brd_it_submissions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_brd_it_submissions_brd ON brd_it_submissions(brd_document_id);
+
+-- FRD Documents (generated from approved BRDs by IT Manager)
+CREATE TABLE IF NOT EXISTS frd_documents (
+  id SERIAL PRIMARY KEY,
+  brd_document_id INTEGER REFERENCES brd_documents(id) ON DELETE CASCADE,
+  request_id INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  doc_id VARCHAR(100) NOT NULL,
+  version VARCHAR(10) DEFAULT '1.0',
+  status VARCHAR(50) DEFAULT 'Draft',
+  content JSONB NOT NULL,
+  generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_frd_docs_brd ON frd_documents(brd_document_id);
+CREATE INDEX IF NOT EXISTS idx_frd_docs_request ON frd_documents(request_id);
+
+-- AI-Generated Test Case Documents (generated from FRDs)
+CREATE TABLE IF NOT EXISTS test_case_documents (
+  id SERIAL PRIMARY KEY,
+  frd_document_id INTEGER REFERENCES frd_documents(id) ON DELETE CASCADE,
+  brd_document_id INTEGER REFERENCES brd_documents(id) ON DELETE CASCADE,
+  request_id INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  doc_id VARCHAR(100) NOT NULL,
+  version VARCHAR(10) DEFAULT '1.0',
+  status VARCHAR(50) DEFAULT 'Draft',
+  content JSONB NOT NULL,
+  generated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_tc_docs_frd ON test_case_documents(frd_document_id);
+CREATE INDEX IF NOT EXISTS idx_tc_docs_request ON test_case_documents(request_id);
 `;
 
 export async function runMigrations() {

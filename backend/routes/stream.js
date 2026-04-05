@@ -3,6 +3,8 @@ import pool from "../config/db.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { analyseKeyPoints } from "../services/brdAgent.js";
 import { generateBRD, enhanceBRD } from "../services/brdGenerator.js";
+import { generateFRD } from "../services/frdGenerator.js";
+import { generateTestCases } from "../services/testCaseGenerator.js";
 import {
   upsertStreamUser,
   generateStreamToken,
@@ -664,6 +666,202 @@ router.get("/approved-brds", authenticateToken, async (req, res) => {
   } catch (err) {
     console.error("Fetch approved BRDs error:", err);
     res.status(500).json({ message: "Failed to fetch approved BRDs" });
+  }
+});
+
+// ── FRD Routes ────────────────────────────────────────────────────────────────
+
+// POST /api/stream/brd-documents/:brdId/generate-frd — IT generates FRD from approved/final BRD
+router.post("/brd-documents/:brdId/generate-frd", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    const { brdId } = req.params;
+
+    const { rows: brdRows } = await pool.query(
+      `SELECT bd.content, bd.status, bd.doc_id,
+              r.id AS request_id, r.req_number, r.title
+       FROM brd_documents bd JOIN requests r ON r.id = bd.request_id
+       WHERE bd.id = $1 AND bd.status IN ('Approved', 'Final')`,
+      [brdId]
+    );
+    if (!brdRows.length) return res.status(404).json({ message: "BRD not found or not yet approved" });
+
+    const brdRow = brdRows[0];
+    const frd    = generateFRD(brdRow.content, brdRow);
+
+    const { rows: existing } = await pool.query(
+      "SELECT id FROM frd_documents WHERE brd_document_id = $1",
+      [brdId]
+    );
+
+    let frdId;
+    if (existing.length) {
+      const { rows } = await pool.query(
+        `UPDATE frd_documents
+         SET content = $1, doc_id = $2, version = $3, status = 'Draft',
+             generated_at = NOW(), updated_at = NOW()
+         WHERE id = $4 RETURNING id`,
+        [JSON.stringify(frd), frd.meta.doc_id, frd.meta.version, existing[0].id]
+      );
+      frdId = rows[0].id;
+    } else {
+      const { rows } = await pool.query(
+        `INSERT INTO frd_documents
+           (brd_document_id, request_id, doc_id, version, status, content, generated_by)
+         VALUES ($1, $2, $3, $4, 'Draft', $5, $6) RETURNING id`,
+        [brdId, brdRow.request_id, frd.meta.doc_id, frd.meta.version, JSON.stringify(frd), req.user.id]
+      );
+      frdId = rows[0].id;
+    }
+
+    res.json({ ...frd, _db_id: frdId });
+  } catch (err) {
+    console.error("FRD generation error:", err);
+    res.status(500).json({ message: "FRD generation failed", detail: err.message });
+  }
+});
+
+// GET /api/stream/frd-documents — list all FRDs (IT only)
+router.get("/frd-documents", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+
+    const { rows } = await pool.query(
+      `SELECT fd.id, fd.doc_id, fd.version, fd.status, fd.generated_at, fd.updated_at,
+              fd.content->'meta'->>'title'    AS title,
+              fd.content->'meta'->>'category' AS category,
+              fd.content->'meta'->>'priority' AS priority,
+              fd.content->'meta'->>'brd_doc_id' AS brd_doc_id,
+              r.id AS request_id, r.title AS request_title, r.req_number,
+              bd.id AS brd_id,
+              (SELECT COUNT(*) FROM test_case_documents tc
+               WHERE tc.frd_document_id = fd.id) AS tc_count,
+              u.name AS author_name, u.email AS author_email
+       FROM frd_documents fd
+       JOIN requests      r  ON r.id  = fd.request_id
+       JOIN brd_documents bd ON bd.id = fd.brd_document_id
+       JOIN users         u  ON u.id  = fd.generated_by
+       ORDER BY fd.updated_at DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Fetch FRD list error:", err);
+    res.status(500).json({ message: "Failed to fetch FRD documents" });
+  }
+});
+
+// GET /api/stream/frd-documents/:frdId — get full FRD
+router.get("/frd-documents/:frdId", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    const { rows } = await pool.query(
+      `SELECT fd.*, r.req_number, r.title AS request_title
+       FROM frd_documents fd JOIN requests r ON r.id = fd.request_id
+       WHERE fd.id = $1`,
+      [req.params.frdId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "FRD not found" });
+    res.json({ ...rows[0].content, _db_id: rows[0].id, _status: rows[0].status });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch FRD" });
+  }
+});
+
+// ── Test Case Routes ──────────────────────────────────────────────────────────
+
+// POST /api/stream/frd-documents/:frdId/generate-test-cases
+router.post("/frd-documents/:frdId/generate-test-cases", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    const { frdId } = req.params;
+
+    const { rows: frdRows } = await pool.query(
+      `SELECT fd.content, fd.brd_document_id, fd.request_id, r.req_number, r.title
+       FROM frd_documents fd JOIN requests r ON r.id = fd.request_id
+       WHERE fd.id = $1`,
+      [frdId]
+    );
+    if (!frdRows.length) return res.status(404).json({ message: "FRD not found" });
+
+    const frdRow = frdRows[0];
+    const tc     = generateTestCases(frdRow.content, frdRow);
+
+    const { rows: existing } = await pool.query(
+      "SELECT id FROM test_case_documents WHERE frd_document_id = $1",
+      [frdId]
+    );
+
+    let tcId;
+    if (existing.length) {
+      const { rows } = await pool.query(
+        `UPDATE test_case_documents
+         SET content = $1, doc_id = $2, status = 'Draft', generated_at = NOW(), updated_at = NOW()
+         WHERE id = $3 RETURNING id`,
+        [JSON.stringify(tc), tc.meta.doc_id, existing[0].id]
+      );
+      tcId = rows[0].id;
+    } else {
+      const { rows } = await pool.query(
+        `INSERT INTO test_case_documents
+           (frd_document_id, brd_document_id, request_id, doc_id, version, status, content, generated_by)
+         VALUES ($1, $2, $3, $4, $5, 'Draft', $6, $7) RETURNING id`,
+        [frdId, frdRow.brd_document_id, frdRow.request_id,
+         tc.meta.doc_id, tc.meta.version, JSON.stringify(tc), req.user.id]
+      );
+      tcId = rows[0].id;
+    }
+
+    res.json({ ...tc, _db_id: tcId });
+  } catch (err) {
+    console.error("Test case generation error:", err);
+    res.status(500).json({ message: "Test case generation failed", detail: err.message });
+  }
+});
+
+// GET /api/stream/test-case-documents — list all test case documents (IT only)
+router.get("/test-case-documents", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+
+    const { rows } = await pool.query(
+      `SELECT tc.id, tc.doc_id, tc.version, tc.status, tc.generated_at, tc.updated_at,
+              tc.content->'meta'->>'title'                    AS title,
+              tc.content->'meta'->>'total_cases'              AS total_cases,
+              tc.content->'meta'->'summary'->>'system'        AS system_cases,
+              tc.content->'meta'->'summary'->>'integration'   AS integration_cases,
+              tc.content->'meta'->'summary'->>'uat'           AS uat_cases,
+              tc.content->'meta'->'summary'->>'critical'      AS critical_cases,
+              tc.content->'meta'->'summary'->>'high'          AS high_cases,
+              r.id AS request_id, r.title AS request_title, r.req_number,
+              fd.doc_id AS frd_doc_id, fd.id AS frd_id,
+              u.name AS author_name, u.email AS author_email
+       FROM test_case_documents tc
+       JOIN frd_documents fd ON fd.id = tc.frd_document_id
+       JOIN requests      r  ON r.id  = tc.request_id
+       JOIN users         u  ON u.id  = tc.generated_by
+       ORDER BY tc.updated_at DESC`
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Fetch TC list error:", err);
+    res.status(500).json({ message: "Failed to fetch test case documents" });
+  }
+});
+
+// GET /api/stream/test-case-documents/:tcId — get full test case document
+router.get("/test-case-documents/:tcId", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    const { rows } = await pool.query(
+      `SELECT tc.*, r.req_number, r.title AS request_title
+       FROM test_case_documents tc JOIN requests r ON r.id = tc.request_id
+       WHERE tc.id = $1`,
+      [req.params.tcId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Test cases not found" });
+    res.json({ ...rows[0].content, _db_id: rows[0].id, _status: rows[0].status });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch test cases" });
   }
 });
 

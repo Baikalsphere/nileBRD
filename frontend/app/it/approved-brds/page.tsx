@@ -5,7 +5,7 @@ import {
   FileCheck2, RefreshCw, Loader2, ChevronDown, ChevronUp,
   FileText, Calendar, User, Tag, BarChart3, CheckCircle2,
   XCircle, ShieldAlert, ClipboardList, BookOpen, Printer,
-  Crown, Search, Filter, ArrowUpRight, Info,
+  Crown, Search, Filter, ArrowUpRight, Info, Wand2, ArrowRight,
 } from "lucide-react";
 import { buildPdfHtml, type BrdDoc } from "@/lib/brdPdf";
 
@@ -250,7 +250,9 @@ export default function ApprovedBrdsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "Approved" | "Final">("all");
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
+  const [pdfLoadingId, setPdfLoadingId]   = useState<number | null>(null);
+  const [generatingFrdId, setGeneratingFrdId] = useState<number | null>(null);
+  const [frdSuccess, setFrdSuccess]       = useState<string | null>(null);
 
   const fetchBrds = useCallback(async () => {
     setLoading(true);
@@ -266,6 +268,21 @@ export default function ApprovedBrdsPage() {
   }, []);
 
   useEffect(() => { fetchBrds(); }, [fetchBrds]);
+
+  const generateFrd = useCallback(async (brd: ApprovedBrd) => {
+    setGeneratingFrdId(brd.id);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`${API}/api/stream/brd-documents/${brd.id}/generate-frd`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.message || "FRD generation failed"); return; }
+      setFrdSuccess(`FRD generated: ${data.meta?.doc_id ?? ""}. View it in FRD Management.`);
+      setTimeout(() => setFrdSuccess(null), 6000);
+    } finally { setGeneratingFrdId(null); }
+  }, []);
 
   const openPdf = useCallback((brd: ApprovedBrd) => {
     if (!brd.content) return;
@@ -352,6 +369,17 @@ export default function ApprovedBrdsPage() {
           </div>
         </div>
       </div>
+
+      {/* FRD success toast */}
+      {frdSuccess && (
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 shadow-sm">
+          <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
+          <span className="text-sm font-medium text-emerald-800">{frdSuccess}</span>
+          <a href="/it/frd-management" className="ml-auto flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-900">
+            Open FRD Management <ArrowRight className="size-3" />
+          </a>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -487,6 +515,17 @@ export default function ApprovedBrdsPage() {
                             ? <Loader2 className="size-3.5 animate-spin" />
                             : <Printer className="size-3.5" />}
                           PDF
+                        </button>
+                        <button
+                          onClick={() => generateFrd(brd)}
+                          disabled={generatingFrdId === brd.id}
+                          title="Generate FRD from this approved BRD"
+                          className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
+                        >
+                          {generatingFrdId === brd.id
+                            ? <Loader2 className="size-3.5 animate-spin" />
+                            : <Wand2 className="size-3.5" />}
+                          Generate FRD
                         </button>
                         <button
                           onClick={() => setExpandedId(isExpanded ? null : brd.id)}
