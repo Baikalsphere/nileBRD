@@ -268,39 +268,37 @@ function ExpandedRow({ docId }: { docId: number }) {
           <td colSpan={7} className="py-6 text-center text-xs text-slate-400">No test cases match the current filters.</td>
         </tr>
       ) : (
-        cases.map(tc => {
+        cases.flatMap(tc => {
           const isOpen = expandedCase === tc.id;
-          return (
-            <>
-              <tr
-                key={tc.id}
-                className={`border-t border-slate-100 cursor-pointer transition-colors ${isOpen ? "bg-violet-50/60" : "hover:bg-slate-50"}`}
-                onClick={() => setExpandedCase(isOpen ? null : tc.id)}
-              >
-                <td className="pl-4 py-3 text-slate-300">
-                  {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-[11px] font-bold text-slate-500">{tc.id}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="text-sm text-slate-800 font-medium">{tc.name}</span>
-                </td>
-                <td className="px-4 py-3"><TypeTag type={tc.type} /></td>
-                <td className="px-4 py-3"><PriorityTag priority={tc.priority} /></td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-[10px] text-slate-400">{tc.frd_ref}</span>
-                </td>
-                <td className="px-4 py-3">
-                  <StatusSelect
-                    value={statuses[tc.id] ?? tc.status}
-                    onChange={v => setStatuses(prev => ({ ...prev, [tc.id]: v }))}
-                  />
-                </td>
-              </tr>
-              {isOpen && <CaseDetail tc={tc} />}
-            </>
+          const row = (
+            <tr
+              key={tc.id}
+              className={`border-t border-slate-100 cursor-pointer transition-colors ${isOpen ? "bg-violet-50/60" : "hover:bg-slate-50"}`}
+              onClick={() => setExpandedCase(isOpen ? null : tc.id)}
+            >
+              <td className="pl-4 py-3 text-slate-300">
+                {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </td>
+              <td className="px-4 py-3">
+                <span className="font-mono text-[11px] font-bold text-slate-500">{tc.id}</span>
+              </td>
+              <td className="px-4 py-3">
+                <span className="text-sm text-slate-800 font-medium">{tc.name}</span>
+              </td>
+              <td className="px-4 py-3"><TypeTag type={tc.type} /></td>
+              <td className="px-4 py-3"><PriorityTag priority={tc.priority} /></td>
+              <td className="px-4 py-3">
+                <span className="font-mono text-[10px] text-slate-400">{tc.frd_ref}</span>
+              </td>
+              <td className="px-4 py-3">
+                <StatusSelect
+                  value={statuses[tc.id] ?? tc.status}
+                  onChange={v => setStatuses(prev => ({ ...prev, [tc.id]: v }))}
+                />
+              </td>
+            </tr>
           );
+          return isOpen ? [row, <CaseDetail key={`${tc.id}-detail`} tc={tc} />] : [row];
         })
       )}
     </>
@@ -421,77 +419,44 @@ export default function TestCasesPage() {
               </thead>
 
               <tbody>
-                {filtered.map(doc => {
+                {filtered.flatMap(doc => {
                   const isOpen = expandedId === doc.id;
                   const s = doc.summary ?? {};
-                  return (
-                    <>
-                      {/* Request row */}
-                      <tr
-                        key={doc.id}
-                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? "bg-violet-50 border-violet-100" : "hover:bg-slate-50"}`}
-                        onClick={() => setExpandedId(isOpen ? null : doc.id)}
-                      >
-                        <td className="pl-4 py-4 text-slate-300">
-                          {isOpen
-                            ? <ChevronDown className="w-4 h-4 text-violet-400" />
-                            : <ChevronRight className="w-4 h-4" />}
-                        </td>
-
-                        {/* Request */}
-                        <td className="px-4 py-4">
-                          <p className="text-sm font-semibold text-slate-800 leading-snug">{doc.request_title}</p>
-                          <span className="font-mono text-[11px] text-slate-400">{doc.req_number}</span>
-                        </td>
-
-                        {/* Doc ID */}
-                        <td className="px-4 py-4">
-                          <span className="font-mono text-xs font-bold text-violet-700 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded">
-                            {doc.doc_id}
-                          </span>
-                        </td>
-
-                        {/* FRD Ref */}
-                        <td className="px-4 py-4">
-                          <span className="font-mono text-xs text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded">
-                            {doc.frd_doc_id}
-                          </span>
-                        </td>
-
-                        {/* Cases breakdown */}
-                        <td className="px-4 py-4">
-                          <div className="flex flex-wrap gap-1">
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
-                              {doc.total_cases}
-                            </span>
-                            {(s.system ?? 0) > 0 && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-100 font-semibold">{s.system} sys</span>
-                            )}
-                            {(s.integration ?? 0) > 0 && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold">{s.integration} int</span>
-                            )}
-                            {(s.uat ?? 0) > 0 && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-100 font-semibold">{s.uat} uat</span>
-                            )}
-                            {(s.critical ?? 0) > 0 && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-100 font-semibold">{s.critical} crit</span>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Date */}
-                        <td className="px-4 py-4 text-xs text-slate-500">
-                          {new Date(doc.generated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                        </td>
-
-                        {/* Author */}
-                        <td className="px-4 py-4 text-xs text-slate-500">{doc.generated_by_name ?? "—"}</td>
-                      </tr>
-
-                      {/* Expanded test cases inline */}
-                      {isOpen && <ExpandedRow docId={doc.id} />}
-                    </>
+                  const row = (
+                    <tr
+                      key={doc.id}
+                      className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? "bg-violet-50 border-violet-100" : "hover:bg-slate-50"}`}
+                      onClick={() => setExpandedId(isOpen ? null : doc.id)}
+                    >
+                      <td className="pl-4 py-4 text-slate-300">
+                        {isOpen ? <ChevronDown className="w-4 h-4 text-violet-400" /> : <ChevronRight className="w-4 h-4" />}
+                      </td>
+                      <td className="px-4 py-4">
+                        <p className="text-sm font-semibold text-slate-800 leading-snug">{doc.request_title}</p>
+                        <span className="font-mono text-[11px] text-slate-400">{doc.req_number}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="font-mono text-xs font-bold text-violet-700 bg-violet-50 border border-violet-100 px-2 py-0.5 rounded">{doc.doc_id}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <span className="font-mono text-xs text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded">{doc.frd_doc_id}</span>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="flex flex-wrap gap-1">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">{doc.total_cases}</span>
+                          {(s.system ?? 0) > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-100 font-semibold">{s.system} sys</span>}
+                          {(s.integration ?? 0) > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 font-semibold">{s.integration} int</span>}
+                          {(s.uat ?? 0) > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-700 border border-teal-100 font-semibold">{s.uat} uat</span>}
+                          {(s.critical ?? 0) > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-100 font-semibold">{s.critical} crit</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-xs text-slate-500">
+                        {new Date(doc.generated_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                      </td>
+                      <td className="px-4 py-4 text-xs text-slate-500">{doc.generated_by_name ?? "—"}</td>
+                    </tr>
                   );
+                  return isOpen ? [row, <ExpandedRow key={`${doc.id}-expanded`} docId={doc.id} />] : [row];
                 })}
               </tbody>
             </table>
