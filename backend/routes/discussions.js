@@ -123,11 +123,14 @@ router.get("/messages/:requestId", authenticateToken, async (req, res) => {
   try {
     const { requestId } = req.params;
 
-    // Stakeholders can access any request's messages; BAs only their assigned ones
+    // Access control: stakeholders see all open requests; BAs see assigned; IT sees channel members
     let accessQuery, accessValues;
     if (req.user.role === "stakeholder") {
       accessQuery = "SELECT id FROM requests WHERE id = $1 AND status != 'Closed'";
       accessValues = [requestId];
+    } else if (req.user.role === "it") {
+      accessQuery = "SELECT r.id FROM requests r JOIN channel_members cm ON cm.request_id = r.id AND cm.user_id = $2 WHERE r.id = $1";
+      accessValues = [requestId, req.user.id];
     } else {
       accessQuery = "SELECT id FROM requests WHERE id = $1 AND assigned_ba_id = $2";
       accessValues = [requestId, req.user.id];
