@@ -1,9 +1,19 @@
 import { StreamChat } from "stream-chat";
 
-const serverClient = StreamChat.getInstance(
-  process.env.STREAM_API_KEY,
-  process.env.STREAM_API_SECRET
-);
+const STREAM_API_KEY    = process.env.STREAM_API_KEY;
+const STREAM_API_SECRET = process.env.STREAM_API_SECRET;
+
+if (!STREAM_API_KEY || !STREAM_API_SECRET) {
+  console.error(
+    "[streamService] STREAM_API_KEY or STREAM_API_SECRET is not set. " +
+    "Add both to your Render environment variables."
+  );
+}
+
+// Use `new StreamChat()` instead of getInstance() to guarantee the secret
+// is bound to this instance. getInstance() is a singleton and can return
+// a previously cached instance that was created without a secret.
+const serverClient = new StreamChat(STREAM_API_KEY, STREAM_API_SECRET);
 
 export async function upsertStreamUser({ id, name, email, role }) {
   await serverClient.upsertUser({
