@@ -1,16 +1,11 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Breadcrumbs } from "@/components/dashboard/Breadcrumbs";
 import { DiscussionPanelProvider } from "@/components/dashboard/DiscussionPanel";
 import { PortalHeader } from "@/components/dashboard/PortalHeader";
 import { PortalSidebar } from "@/components/dashboard/PortalSidebar";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
 import { type NavItem } from "@/lib/mockData";
 
 type RoleLayoutProps = {
@@ -21,22 +16,25 @@ type RoleLayoutProps = {
 };
 
 export function RoleLayout({ title, userName, navItems, children }: RoleLayoutProps) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
-    <SidebarProvider>
-      <PortalSidebar title={title} navItems={navItems} />
+    <div className="min-h-screen bg-slate-100">
+      <PortalSidebar
+        title={title}
+        navItems={navItems}
+        collapsed={collapsed}
+        onToggle={() => setCollapsed(v => !v)}
+      />
 
-      <SidebarInset>
-        {/* Header row: trigger + existing portal header */}
-        <div className="sticky top-0 z-50 flex items-center gap-1 border-b border-slate-200 bg-white">
-          <div className="flex shrink-0 items-center pl-3">
-            <SidebarTrigger />
-          </div>
-          <div className="flex-1 min-w-0">
-            <PortalHeader userName={userName} />
-          </div>
-        </div>
+      {/* Content column — shifts with sidebar */}
+      <div
+        className="flex min-h-screen flex-col transition-all duration-300"
+        style={{ marginLeft: collapsed ? "4rem" : "16rem" }}
+      >
+        <PortalHeader userName={userName} />
 
-        {/* Page content */}
+        {/* Relative container so DiscussionPanel can absolute-fill it */}
         <div className="relative flex flex-1 overflow-hidden">
           <DiscussionPanelProvider>
             <main className="flex-1 overflow-y-auto px-6 py-7 sm:px-8">
@@ -47,7 +45,7 @@ export function RoleLayout({ title, userName, navItems, children }: RoleLayoutPr
             </main>
           </DiscussionPanelProvider>
         </div>
-      </SidebarInset>
-    </SidebarProvider>
+      </div>
+    </div>
   );
 }

@@ -17,7 +17,7 @@ export function PortalHeader({ userName }: { userName: string }) {
   );
 
   return (
-    <header suppressHydrationWarning className="flex items-center justify-between gap-4 bg-white px-6 py-3.5">
+    <header suppressHydrationWarning className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-6 py-3.5">
 
       {/* Search */}
       <div className="relative w-full max-w-sm">
