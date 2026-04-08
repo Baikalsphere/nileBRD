@@ -235,24 +235,46 @@ function deriveUIScreens(frs) {
 }
 
 // ── Integration requirement derivation ────────────────────────────────────────
-function deriveIntegrations(frs) {
+/**
+ * Derives integration specs from FRD functional specs AND from the BRD
+ * integration_requirements section (which is passed as brdIntegrations).
+ */
+function deriveIntegrations(frs, brdIntegrations = []) {
   const items = [];
 
-  if (frs.some((fr) => /email|notif|alert|message/i.test(fr.description)))
-    items.push({ id: "INT-001", system: "Email / Notification Service", type: "Outbound", description: "Send transactional emails and in-app push notifications for status changes, approvals, and alerts. Must support templates and retry on delivery failure." });
+  // 1. Promote BRD integration_requirements directly into FRD integration specs
+  brdIntegrations.forEach((intReq) => {
+    items.push({
+      id:          `INT-${pad(items.length + 1)}`,
+      system:      intReq.system,
+      type:        intReq.direction || intReq.type || "REST API",
+      input:       intReq.input,
+      output:      intReq.output,
+      auth:        intReq.auth,
+      sla:         intReq.sla,
+      description: intReq.description,
+    });
+  });
 
-  if (frs.some((fr) => /report|export|pdf|excel|csv/i.test(fr.description)))
-    items.push({ id: `INT-${pad(items.length + 1)}`, system: "Document Generation Service", type: "Internal", description: "Generate formatted PDF and Excel reports from structured JSON data. Supports scheduled and on-demand generation with watermarking for drafts." });
+  // 2. Pattern-based additions from FR descriptions (financial/banking)
+  if (frs.some((fr) => /upload|pdf|bank statement|document/i.test(fr.description)) && !items.some((i) => /upload|document/i.test(i.system)))
+    items.push({ id: `INT-${pad(items.length + 1)}`, system: "Document Upload & Storage Service", type: "Inbound", input: "PDF (up to 50 MB)", output: "Document reference ID + parsed data", auth: "JWT Bearer", sla: "Upload ACK < 5 s; processing < 30 s", description: "Handles customer bank statement PDF uploads. Validates file type and size, stores the file temporarily during processing, then discards the raw document after data extraction." });
 
-  if (frs.some((fr) => /auth|sso|login|ldap|oauth/i.test(fr.description)))
-    items.push({ id: `INT-${pad(items.length + 1)}`, system: "Identity / Authentication Provider", type: "Bidirectional", description: "SSO / LDAP / OAuth2 integration for centralised user authentication and role synchronisation. Supports multi-factor authentication." });
+  if (frs.some((fr) => /parse|extract|salary|transaction|income|emi|bounce/i.test(fr.description)) && !items.some((i) => /pars|aggregat|statement api/i.test(i.system)))
+    items.push({ id: `INT-${pad(items.length + 1)}`, system: "Bank Statement Parsing API (Account Aggregator)", type: "Outbound", input: "PDF bank statement", output: "JSON — salary credits, EMIs, bounces, average balance", auth: "Secure API Key", sla: "Response within 8–10 seconds", description: "Third-party REST API that parses uploaded PDF bank statements and returns structured JSON transaction data including salary credits, EMI obligations, and flagged anomalies." });
 
-  if (frs.some((fr) => /audit|log|track|histor/i.test(fr.description)))
-    items.push({ id: `INT-${pad(items.length + 1)}`, system: "Audit & Logging Service", type: "Outbound", description: "Stream structured audit events to a centralised logging platform for compliance, traceability, and forensic investigation." });
+  if (frs.some((fr) => /consent|customer consent|permission/i.test(fr.description)) && !items.some((i) => /consent/i.test(i.system)))
+    items.push({ id: `INT-${pad(items.length + 1)}`, system: "Customer Consent Management Service", type: "Bidirectional", input: "Customer ID + consent request payload", output: "Consent record (granted/denied) + timestamp", auth: "JWT Bearer", sla: "Consent capture < 2 s", description: "Records and validates customer consent before any bank statement data is fetched. Consent record is stored for regulatory audit." });
+
+  if (frs.some((fr) => /email|notif|alert|message/i.test(fr.description)) && !items.some((i) => /email|notif/i.test(i.system)))
+    items.push({ id: `INT-${pad(items.length + 1)}`, system: "Email / Notification Service", type: "Outbound", input: "Event payload + recipient", output: "Delivery receipt", auth: "SMTP / API Key", sla: "Delivery < 5 min; retry 3×", description: "Sends transactional notifications for statement processing completion, manual review routing, and income assessment results." });
+
+  if (frs.some((fr) => /audit|log|track|histor/i.test(fr.description)) && !items.some((i) => /audit/i.test(i.system)))
+    items.push({ id: `INT-${pad(items.length + 1)}`, system: "Audit & Compliance Logging Service", type: "Outbound", input: "Structured audit event (JSON)", output: "Immutable log entry", auth: "Internal service token", sla: "Log write < 200 ms", description: "Streams structured audit events for all consent grants, data fetches, income assessments, and manual review decisions. Required for regulatory compliance." });
 
   if (items.length === 0) {
-    items.push({ id: "INT-001", system: "PostgreSQL Database", type: "Internal", description: "Primary persistent data store for all application entities. Accessed via connection pool with parameterised queries to prevent injection." });
-    items.push({ id: "INT-002", system: "REST API Gateway", type: "Inbound", description: "HTTP/HTTPS REST interface for frontend-to-backend communication. JWT-authenticated, CORS-configured, rate-limited." });
+    items.push({ id: "INT-001", system: "PostgreSQL Database", type: "Internal", input: "SQL queries", output: "Resultset", auth: "Connection pool", sla: "Query < 500 ms", description: "Primary persistent data store for all application entities. Parameterised queries prevent SQL injection." });
+    items.push({ id: "INT-002", system: "REST API Gateway", type: "Inbound", input: "HTTP/HTTPS request", output: "JSON response", auth: "JWT Bearer", sla: "P95 < 2 s", description: "HTTP/HTTPS REST interface for frontend-to-backend communication. JWT-authenticated, CORS-configured, rate-limited." });
   }
 
   return items;
@@ -294,10 +316,11 @@ function deriveMetric(category) {
 
 // ── Main export ────────────────────────────────────────────────────────────────
 export function generateFRD(brd, requestInfo) {
-  const meta = brd.meta;
-  const s    = brd.sections;
-  const frs  = s.functional_requirements.items;
-  const nfrs = s.non_functional_requirements?.items ?? [];
+  const meta            = brd.meta;
+  const s               = brd.sections;
+  const frs             = s.functional_requirements.items;
+  const nfrs            = s.non_functional_requirements?.items ?? [];
+  const brdIntegrations = s.integration_requirements?.items ?? [];
 
   const docId    = frdDocId(meta.doc_id);
   const effDate  = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" });
@@ -359,7 +382,7 @@ export function generateFRD(brd, requestInfo) {
       },
       integration_requirements: {
         title: "Integration Requirements",
-        items: deriveIntegrations(frs),
+        items: deriveIntegrations(frs, brdIntegrations),
       },
       non_functional_requirements: {
         title: "Technical & Non-Functional Requirements",
