@@ -55,7 +55,8 @@ const PRIORITY_DOT: Record<string, string> = {
   Low: "bg-emerald-400", Medium: "bg-amber-400", High: "bg-orange-500", Critical: "bg-rose-500",
 };
 
-// ─── PDF Generator (imported from @/lib/brdPdf) ───────────────────────────────
+// ─── PDF Generator (legacy stub — PDF generation now handled by @/lib/brdPdf) ──
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function _buildPdfHtml(doc: BrdDoc): string {
   const s = doc.sections;
   const meta = doc.meta;
@@ -428,6 +429,33 @@ function BrdViewerModal({ doc, onClose, onUpdateStatus }: { doc: BrdDoc; onClose
             )}
           </div>
 
+          {/* 4 — Stakeholder Analysis */}
+          {s.stakeholders.list.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">4</div>
+                <Users className="size-4 text-teal-500" />
+                <h3 className="text-sm font-bold text-slate-800">{s.stakeholders.title}</h3>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b border-slate-100">
+                    {["Name", "Role / Responsibility"].map(h => <th key={h} className="py-2 pr-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">{h}</th>)}
+                  </tr></thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {s.stakeholders.list.map((st, i) => (
+                      <tr key={i}>
+                        <td className="py-2.5 pr-3 font-semibold text-slate-800 text-xs">{st.name}</td>
+                        <td className="py-2.5 text-xs text-slate-600">{st.role}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* 5 — Functional Requirements */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
@@ -566,6 +594,27 @@ function BrdViewerModal({ doc, onClose, onUpdateStatus }: { doc: BrdDoc; onClose
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {/* 10 — Action Items */}
+          {s.action_items.items.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">10</div>
+                <ArrowRight className="size-4 text-sky-500" />
+                <h3 className="text-sm font-bold text-slate-800">{s.action_items.title}</h3>
+                <span className="ml-auto rounded-full bg-sky-100 border border-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-700">{s.action_items.items.length} items</span>
+              </div>
+              <div className="space-y-2">
+                {s.action_items.items.map(a => (
+                  <div key={a.id} className="flex items-start gap-3 rounded-xl border border-sky-100 bg-sky-50/40 px-4 py-3">
+                    <span className="font-mono text-[10px] font-bold text-sky-600 shrink-0 mt-0.5 w-8">{a.id}</span>
+                    <p className="text-xs text-slate-700 leading-relaxed flex-1">{a.description}</p>
+                    <span className="shrink-0 rounded-full bg-amber-100 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">{a.status}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

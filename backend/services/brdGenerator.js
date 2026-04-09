@@ -229,6 +229,91 @@ function deriveMitigation(text) {
   return "Assign a named risk owner. Review risk status at each sprint review and milestone gate. Escalate immediately if the risk materialises or the likelihood increases.";
 }
 
+// ─── Professional risk description formaliser ────────────────────────────────
+/**
+ * Converts raw stakeholder concern text (informal chat) into a professional
+ * risk register entry description.  Matches domain signals first; falls back
+ * to a cleaned generic statement.
+ */
+const RISK_DOMAIN_TEMPLATES = [
+  { re: /vendor|third.?party|provider|aggregator|account aggregator/i,
+    desc: "The project relies on a third-party vendor or external service provider for a core processing capability. Vendor non-availability, unilateral API contract changes, or SLA non-compliance could delay the delivery timeline or cause production-level incidents. The absence of a contracted fallback provider amplifies this exposure." },
+  { re: /performance|latency|response time|timeout|8 second|10 second|speed|slow/i,
+    desc: "Third-party API response times may fail to consistently meet the agreed SLA under real-world production load. If the parsing or integration API repeatedly exceeds the defined timeout threshold, downstream assessment workflows will be blocked, directly degrading customer experience and operational throughput. No SLA breach remedy mechanism is currently defined." },
+  { re: /salary.*not|not.*detect|identify.*salary|manual.*review|manual review|fallback|not detected/i,
+    desc: "The automated income assessment engine may fail to identify salary credits for a subset of bank account formats or non-standard transaction narration patterns. Such cases will require manual underwriting review, creating an operational burden, introducing processing delays, and risking inconsistent decision-making if the manual review queue is not adequately resourced." },
+  { re: /fraud|suspicious|cash deposit|irregular|anomal/i,
+    desc: "The fraud detection ruleset may not adequately cover all novel or emerging fraud patterns present in submitted bank statements. False negatives — where fraudulent applications are not flagged — expose the organisation to direct financial loss. Excessive false positives conversely increase the manual review workload and delay legitimate applications." },
+  { re: /consent|permission|regulatory|gdpr|compliance|legal/i,
+    desc: "Failure to implement the customer consent framework in full compliance with applicable data protection regulations exposes the organisation to regulatory enforcement action, significant financial penalties, and reputational damage. The consent wording, storage mechanism, and revocation process must be reviewed and formally approved by the legal and compliance team before implementation." },
+  { re: /data|privacy|store|storage|sensitive|bank statement|retain/i,
+    desc: "Unintended retention of raw bank statement files or full transaction records beyond the processing session would constitute a data minimisation breach, creating regulatory liability and increasing the organisation's exposure in the event of a data security incident. Strict post-processing purge controls must be implemented, tested, and verified at every release." },
+  { re: /unclear|ambiguous|undefined|not defined|not specified|missing.*requirement|scope.*unclear/i,
+    desc: "One or more requirements lack sufficient detail or contain ambiguities that could lead to incorrect system behaviour, scope creep, or costly rework during development or UAT. Unresolved ambiguities at the commencement of development significantly increase the risk of delivery delays and stakeholder dissatisfaction with the delivered solution." },
+  { re: /timeline|deadline|schedule|delay|capacity|resource|late|sprint/i,
+    desc: "The current delivery timeline is at risk due to open dependencies, resource constraints, or the volume of unresolved requirement items. A slippage on any critical path dependency will cascade across all downstream milestones, including UAT, integration testing, and the planned go-live date." },
+  { re: /cost|budget|expensive|price|fee|licen/i,
+    desc: "Vendor API licensing or operational costs may escalate beyond the agreed budget envelope, particularly where usage-based pricing applies and processing volumes exceed original estimates. Budget overruns could necessitate scope reduction, delivery phasing, or escalation to the project sponsor for additional funding approval." },
+  { re: /security|encrypt|access|unauthoris|credential|breach|token|authentication/i,
+    desc: "Insufficient access controls, weak credential management practices, or inadequate encryption of financial and personal data could result in unauthorised data access or a security breach. Financial data represents a high-value target, and any control deficiency in this system carries significant legal, regulatory, and reputational consequences." },
+  { re: /integration|connect|api|endpoint|webhook|interface/i,
+    desc: "Integration with external services introduces interface stability risk. Breaking changes to external API contracts, authentication scheme changes, or infrastructure connectivity issues in the production environment could render core system capabilities unavailable without prior warning or agreed remediation timelines." },
+  { re: /adoption|training|user.*accept|change.*management|resistance/i,
+    desc: "End users and operational teams may resist adopting the new system or may require more training than planned to operate it effectively. Low adoption rates reduce the realised business value of the investment and may result in continued dependence on manual processes the system was designed to replace." },
+];
+
+function formaliseRisk(rawText) {
+  for (const { re, desc } of RISK_DOMAIN_TEMPLATES) {
+    if (re.test(rawText)) return desc;
+  }
+  // Fallback: clean the raw text and wrap in a professional risk statement
+  const cleaned = cleanToRequirement(rawText)
+    .replace(/^the system shall /i, "")
+    .replace(/^(the (organisation|team) (should|must|needs? to) )/i, "");
+  const lower = cleaned.charAt(0).toLowerCase() + cleaned.slice(1);
+  return `There is an identified operational risk that ${lower}. ` +
+    "This risk requires a named owner, a formal mitigation plan, and scheduled review at each project milestone gate.";
+}
+
+// ─── Professional action item formaliser ──────────────────────────────────────
+/**
+ * Converts raw action item text (informal chat) into a professionally worded
+ * action description suitable for a BRD action register.
+ */
+const ACTION_DOMAIN_TEMPLATES = [
+  { re: /vendor|third.?party|provider|aggregator|api.*vendor|agree.*api/i,
+    desc: "Confirm integration API specifications, SLA commitments, authentication scheme, error-handling contracts, and fallback provisions with the selected third-party vendor. Obtain a signed contract or agreed statement of work before development commences." },
+  { re: /consent|legal|compliance|regulatory|wording|form|policy|data.*protection/i,
+    desc: "Submit the draft customer consent notice, data processing purpose statement, and data retention policy to the legal and compliance team for formal review. Obtain written sign-off on all consent framework components before implementation of the consent capture module begins." },
+  { re: /salary|narration|pattern|bank.*format|format.*bank|income.*pattern/i,
+    desc: "Compile and validate the initial salary narration pattern library covering all banks in scope for Phase 1. Define the governance process for maintaining and extending the pattern library post-go-live. Document known edge cases and the routing rules for unmatched narrations." },
+  { re: /threshold|configur|rule|parameter|fraud.*rule|risk.*rule|rule.*set/i,
+    desc: "Collaborate with the risk and fraud team to define and agree all configurable rule parameters, scoring thresholds, and risk escalation boundaries. Document the agreed baseline ruleset and the formal change control process for post-deployment rule amendments." },
+  { re: /uat|test|testing|acceptance|scenario|test plan|test case/i,
+    desc: "Develop and circulate the UAT test plan covering all defined acceptance criteria, regulatory scenarios, and edge cases. Confirm UAT participants, testing environment configuration, entry and exit criteria, and the defect management process before testing commences." },
+  { re: /timeline|schedule|plan|milestone|delivery|sprint|roadmap|project plan/i,
+    desc: "Prepare and circulate a detailed delivery plan with defined milestones, dependencies, and named owners. Identify and document all critical path items. Agree a formal change control process for any scope or timeline adjustments prior to sign-off." },
+  { re: /stakeholder|sign.?off|approval|review.*feedback|confirm.*scope|meeting/i,
+    desc: "Schedule a structured requirements review session with all key stakeholders to validate scope, priorities, and acceptance criteria. Document all agreed decisions and obtain formal written sign-off before development commences." },
+  { re: /data.*model|schema|database|entity|design|architecture|technical.*design/i,
+    desc: "Conduct a technical design session to finalise the data model, entity relationships, API contract, and overall system architecture. Document key design decisions using Architecture Decision Records (ADRs) and obtain senior technical review before implementation begins." },
+  { re: /clarify|unclear|ambiguous|define|refine|detail|scope.*clarif/i,
+    desc: "Schedule a targeted requirements clarification workshop to resolve all identified ambiguities. Document every decision with the rationale and obtain formal stakeholder sign-off on the refined requirements before development proceeds." },
+  { re: /security|pen.*test|penetration|vulnerab|owasp/i,
+    desc: "Engage the information security team to conduct a threat modelling session and define the security test scope. Schedule penetration testing for the pre-go-live phase and agree remediation SLAs for any identified vulnerabilities." },
+];
+
+function formaliseActionItem(rawText) {
+  for (const { re, desc } of ACTION_DOMAIN_TEMPLATES) {
+    if (re.test(rawText)) return desc;
+  }
+  // Fallback: clean and produce a professional action statement
+  const cleaned = cleanToRequirement(rawText)
+    .replace(/^(the system shall |next step[s]?[,:\s]*|we (need|should|must) )/i, "");
+  return `${cap(cleaned.charAt(0).toLowerCase() + cleaned.slice(1))}. ` +
+    "Assign a named owner, define measurable completion criteria, and track progress to closure at each milestone review.";
+}
+
 // ─── Stakeholder extraction ───────────────────────────────────────────────────
 function extractStakeholders(messages, requestInfo) {
   const names = new Set();
@@ -251,12 +336,34 @@ function cap(str = "") { return str.charAt(0).toUpperCase() + str.slice(1); }
 // ─── Text cleaner ─────────────────────────────────────────────────────────────
 function cleanToRequirement(raw) {
   let text = String(raw)
-    .replace(/^(next step[s]?[:\s,]*|understood[.\s,]*|noted[.\s,]*|agreed[.\s,]*|sure[,\s]+|ok[ay]*[,.\s]+|thanks?[,.\s]+|do we have[^?]*\??\s*)/i, "")
+    // Strip common conversational openers
+    .replace(/^(next step[s]?[:\s,]*|action[:\s,]*|noted[.\s,]*|understood[.\s,]*|agreed[.\s,]*|sure[,\s]+|ok[ay]*[,.\s]+|thanks?[,.\s]+|yes[,.\s]+|no[,.\s]+|right[,.\s]+)/i, "")
+    .replace(/^(do we have[^?]*\??\s*|have we [^?]*\??\s*|is there [^?]*\??\s*)/i, "")
+    .replace(/^(so[,\s]+|well[,\s]+|basically[,\s]+|honestly[,\s]+|actually[,\s]+)/i, "")
+    .replace(/^(just to clarify[,:\s]*|to confirm[,:\s]*|to summarise[,:\s]*|just checking[,:\s]*)/i, "")
     .replace(/^(from (my|our|the) (side|end|perspective)[,:\s]*)/i, "")
-    .replace(/\b(I've|we've|I'll|we'll|I'm|we're)\b/gi, "the team")
-    .replace(/\b(I |me |my |we |us |our )\b/gi, "the organisation ")
-    .replace(/^(also\s+)?(noticing|noticed|aware that|seeing that)\s+/i, "There are ")
-    .replace(/\?$/, "").replace(/\s+/g, " ").trim();
+    .replace(/^(as (mentioned|discussed|agreed)[,:\s]*)/i, "")
+    .replace(/^(one more thing[,:\s]*|also[,:\s]+|additionally[,:\s]+|furthermore[,:\s]+)/i, "")
+    // Convert informal first-person and second-person to formal third-person
+    .replace(/\b(I've|we've)\b/gi, "the team has")
+    .replace(/\b(I'll|we'll)\b/gi, "the team will")
+    .replace(/\b(I'm|we're)\b/gi, "the system is")
+    .replace(/\b(I |me )\b/gi, "the organisation ")
+    .replace(/\b(my |our )\b/gi, "the organisation's ")
+    .replace(/\b(we need to|we should|we must|we want to)\b/gi, "the system shall")
+    .replace(/\b(you need to|you should|you must)\b/gi, "the system shall")
+    .replace(/\b(we are|we have)\b/gi, "the system")
+    // Clean up leading existence phrases
+    .replace(/^(also\s+)?(noticing|noticed|aware that|seeing that|there is a concern that)\s+/i, "")
+    .replace(/^(there are (some\s+)?issues? with|there (is|are) a problem with)\s+/i, "There are issues with ")
+    // Clean informal phrase starters
+    .replace(/^(so the idea is|the plan is|what (i|we) (want|need) is)[,:\s]*/i, "")
+    .replace(/^(what happens when|what about|how about)[,:\s]*/i, "")
+    // Strip trailing questions and informal closers
+    .replace(/\?+$/, "")
+    .replace(/\s*(right|correct|ok|okay|yeah)\s*\.?\s*$/i, "")
+    // Normalise whitespace
+    .replace(/\s+/g, " ").trim();
   if (text.length < 10) text = raw.trim();
   return cap(text);
 }
@@ -274,18 +381,55 @@ async function generateText(prompt, maxTokens = 120) {
 }
 
 // ─── Formal requirement rewriter (fallback for unclustered messages) ──────────
+// Domain-aware phrase-to-requirement transformations for common informal patterns
+const INFORMAL_TO_REQUIREMENT = [
+  [/^vendor costs have (gone up|increased)/i,           "track and manage third-party vendor costs and alert authorised personnel when costs exceed the agreed budget threshold"],
+  [/^costs have (gone up|increased)/i,                  "provide cost visibility and budget tracking for all operational expenditures, with alerts when defined thresholds are exceeded"],
+  [/^(inefficien(cy|cies) in|some inefficien)/i,        "identify, report, and support resolution of process inefficiencies in"],
+  [/^there are (some\s+)?(issue[s]?|problem[s]?) with/i,"log, track, and surface issues with"],
+  [/^(need[s]? to|need a|need an)\s+/i,                 "provide "],
+  [/^(want[s]? to|would like to)\s+/i,                  "enable users to "],
+  [/^(allow[s]? user[s]? to|let[s]? user[s]? )/i,      "enable authorised users to "],
+  [/^(should be able to|must be able to|has to be able to)/i, "enable authorised users to "],
+  [/^(support[s]? the ability to)/i,                    "support "],
+  [/^(provide[s]? (the|a|an) ability to)/i,             "provide the capability to "],
+  [/^(make it (possible|easy) to)/i,                    "provide a user-friendly interface to "],
+  [/^(ensure[s]? that )/i,                              "enforce that "],
+  [/^(check[s]? (that|if|whether) )/i,                  "validate that "],
+  [/^(track[s]?|monitor[s]?) /i,                        "record and report on "],
+  [/^(send[s]?|notif(y|ies)|alert[s]?) /i,              "dispatch automated notifications for "],
+  [/^(store[s]?|sav(e|es)|persist[s]?) /i,              "securely store and retrieve "],
+  [/^(display[s]?|show[s]?|present[s]?) /i,             "display to authorised users "],
+  [/^(generat(e[s]?|es?)|creat(e[s]?|es?)) /i,         "generate and make available "],
+];
+
 async function formaliseRequirement(text) {
   const cleaned = cleanToRequirement(text);
   if (/^the system shall/i.test(cleaned)) return cap(cleaned);
 
+  // Try Flan-T5 for a proper "The system shall…" rewrite
   const prompt = `Rewrite as a concise formal business system requirement starting with "The system shall". Input: ${cleaned.slice(0, 180)}`;
   const out    = await generateText(prompt, 80);
-  if (out.length > 15 && /^The system shall/i.test(out) && out.length < 300 && !out.toLowerCase().startsWith(cleaned.slice(0, 20).toLowerCase()))
-    return cap(out);
+  if (
+    out.length > 20 &&
+    /^The system shall/i.test(out) &&
+    out.length < 300 &&
+    !out.toLowerCase().startsWith(cleaned.slice(0, 20).toLowerCase()) &&
+    !/undefined|null|\bI\b|\bwe\b|\byou\b/i.test(out)
+  ) return cap(out);
 
-  const core = cleaned
-    .replace(/^(vendor costs have (gone up|increased)|costs have (gone up|increased))/i, "track and manage vendor costs that have increased")
-    .replace(/^(inefficien(cy|cies) in|some inefficien)/i, "identify and resolve inefficiencies in")
+  // Domain-aware phrase transformation
+  let core = cleaned;
+  for (const [re, replacement] of INFORMAL_TO_REQUIREMENT) {
+    if (re.test(core)) {
+      core = core.replace(re, replacement);
+      break;
+    }
+  }
+  // Strip leading filler that cleanToRequirement may have missed
+  core = core
+    .replace(/^the system shall /i, "")   // avoid double-prefix
+    .replace(/^the organisation\s+(needs?|must|should|wants?)\s+/i, "")
     .replace(/^(there are (some\s+)?)/i, "");
 
   return `The system shall ${core.charAt(0).toLowerCase() + core.slice(1)}`;
@@ -810,7 +954,7 @@ export async function enhanceBRD(existingBrd, improvementComments, requestInfo) 
       const isDup = newRisks.some((r) => r.description.toLowerCase().slice(0, 30) === c.comment.toLowerCase().slice(0, 30));
       if (!isDup) {
         const { impact, probability } = assessRisk(c.comment);
-        newRisks.push({ id: `R-${String(ex.risk_register.items.length + i + 1).padStart(3, "0")}`, description: cap(c.comment), impact, probability, mitigation: deriveMitigation(c.comment) });
+        newRisks.push({ id: `R-${String(ex.risk_register.items.length + i + 1).padStart(3, "0")}`, description: formaliseRisk(c.comment), impact, probability, mitigation: deriveMitigation(c.comment) });
       }
     });
 
@@ -893,7 +1037,7 @@ export async function generateBRD(analysis, requestInfo, messages = []) {
     const { impact, probability } = assessRisk(concern);
     return {
       id:          `R-${String(i + 1).padStart(3, "0")}`,
-      description: cap(concern),
+      description: formaliseRisk(concern),
       impact,
       probability,
       mitigation:  deriveMitigation(concern),
@@ -906,7 +1050,7 @@ export async function generateBRD(analysis, requestInfo, messages = []) {
   // ── 11. Action items ──────────────────────────────────────────────────────
   const actionItems = (analysis.action_items || []).map((item, i) => ({
     id:          `A-${String(i + 1).padStart(3, "0")}`,
-    description: cap(item),
+    description: formaliseActionItem(item),
     status:      "Open",
   }));
 
