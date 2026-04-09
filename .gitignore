@@ -78,3 +78,6 @@ frontend/.env.production.local
 # ML model cache (downloaded at runtime by @xenova/transformers)
 models/
 backend/models/
+
+# Local file uploads (stored on disk, not committed)
+backend/uploads/

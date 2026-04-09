@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import pool from "../config/db.js";
-import { uploadFile, getSignedDownloadUrl, deleteFile } from "../config/storage.js";
+import { uploadFile, getSignedDownloadUrl, deleteFile, resolveSignedToken, keyToAbsPath } from "../config/storage.js";
 import { authenticateToken } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -368,8 +368,26 @@ router.get("/shared-with-me", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/requests/attachment/:id — returns a presigned download URL (15 min expiry)
-// The client opens this URL directly — no file bytes pass through the server
+// GET /api/requests/download?token=<token> — serves the file referenced by a signed token
+router.get("/download", async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ message: "Missing token" });
+
+  const key = resolveSignedToken(token);
+  if (!key) return res.status(410).json({ message: "Link expired or invalid" });
+
+  const filePath = keyToAbsPath(key);
+  try {
+    res.download(filePath, (err) => {
+      if (err && !res.headersSent) res.status(404).json({ message: "File not found" });
+    });
+  } catch {
+    res.status(404).json({ message: "File not found" });
+  }
+});
+
+// GET /api/requests/attachment/:id — returns a signed download URL (15 min expiry)
+// The client opens this URL in a new tab to download the file
 router.get("/attachment/:id", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
