@@ -2,16 +2,17 @@
  * BRD Generator — Advanced AI document generation engine.
  *
  * Pipeline:
- *  1. Flan-T5 (text2text-generation) — executive summary + objective
- *  2. Formal requirement rewriting   — "The system shall…" pattern
- *  3. MoSCoW prioritisation          — deterministic pattern matching
- *  4. NFR inference                  — expanded to cover Performance, Security,
- *                                       Compliance, Storage, and 5 more categories
- *  5. Business rules extraction      — derived from requirement + domain text
- *  6. Integration requirements       — derived from integration_signals metadata
- *  7. Risk matrix                    — impact/probability + mitigation
- *  8. Scope inference                — in/out of scope from requirements
- *  9. Full JSON BRD assembly         — numbered sections, IDs, version metadata
+ *  1. Functional area grouping   — requirements clustered into 8 domain areas
+ *  2. Professional requirement synthesis — comprehensive "shall" statements per area
+ *  3. Scope narrative builder    — intelligent summary, NOT copy-paste of chat
+ *  4. Process flow derivation    — end-to-end business process steps
+ *  5. Executive summary          — 4-element professional narrative
+ *  6. SMART objectives           — goal statements tied to domain signals
+ *  7. NFR inference              — 10-category expanded coverage
+ *  8. Business rules extraction  — domain pattern matching
+ *  9. Integration requirements   — from agent signals + domain patterns
+ * 10. Risk matrix                — impact / probability / mitigation
+ * 11. Full JSON BRD assembly     — numbered sections, IDs, version metadata
  */
 
 import { pipeline, env } from "@xenova/transformers";
@@ -53,161 +54,140 @@ function moscowPriority(text) {
   return "Must Have";
 }
 
-// ─── NFR inference — expanded ─────────────────────────────────────────────────
+// ─── NFR inference ─────────────────────────────────────────────────────────────
 const NFR_PATTERNS = [
   { re: /\b(fast|quick|speed|response time|latency|performance|throughput|efficient|\d+\s*second[s]?|within \d+)\b/i,
     category: "Performance",
-    desc: "System response times shall meet agreed SLA targets. API calls shall complete within the specified time window." },
+    desc: "System response times shall meet agreed SLA targets. API calls shall complete within the specified time window. UI interactions shall respond within 2 seconds under normal load." },
   { re: /\b(secure|security|authentication|authoris|encrypt|access control|permission|role|api key|tls|https)\b/i,
     category: "Security",
-    desc: "All data access shall be authenticated and sensitive financial data encrypted in transit and at rest." },
+    desc: "All data access shall require authentication. Sensitive financial and personal data shall be encrypted in transit (TLS 1.2+) and at rest. Role-based access controls shall restrict functionality to authorised users only." },
   { re: /\b(uptime|availability|24.7|always on|reliable|disaster|failover|backup)\b/i,
     category: "Availability",
-    desc: "System availability shall meet the agreed uptime SLA (>99.5%)." },
+    desc: "System availability shall meet a minimum 99.5% uptime SLA during agreed business hours. Planned maintenance shall be scheduled outside core hours with prior notification." },
   { re: /\b(scale|scalab|load|concurrent|users|traffic|grow)\b/i,
     category: "Scalability",
-    desc: "System shall scale horizontally to support projected user growth." },
+    desc: "The system shall scale horizontally to support a 3× increase in concurrent users without degradation in response times or data integrity." },
   { re: /\b(audit|log|track|monitor|compliance|regulatory|gdpr|legal)\b/i,
     category: "Compliance & Audit",
-    desc: "All user actions shall be logged for compliance and audit purposes." },
+    desc: "All state-changing operations and data access events shall be logged in an immutable audit trail. Logs shall be retained per the organisation's data governance policy and made available to authorised compliance personnel on request." },
   { re: /\b(consent|customer consent|permission|authoris|approval before|mandatory consent)\b/i,
     category: "Regulatory Compliance & Consent",
-    desc: "Explicit customer consent shall be obtained and recorded before any personal or financial data is fetched or processed." },
+    desc: "Explicit, informed customer consent shall be obtained and recorded before any personal or financial data is fetched, processed, or shared. Consent records shall be stored with timestamp and session attribution for regulatory audit." },
   { re: /\b(store only|summary only|not store|derived|store.*summary|sensitive.*not.*store|no.*full.*statement)\b/i,
     category: "Data Storage & Privacy",
-    desc: "Only derived financial summary values shall be stored. Raw bank statements and full transaction data shall not be persisted after processing." },
+    desc: "Only derived financial summary values shall be persisted after processing. Raw bank statements and full transaction data shall not be stored beyond the immediate processing session. Storage minimisation is required to meet data protection obligations." },
   { re: /\b(mobile|responsive|device|tablet|phone|browser|cross.platform)\b/i,
     category: "Usability",
-    desc: "Interface shall be responsive and accessible across modern browsers and devices." },
+    desc: "The user interface shall be fully responsive and accessible across modern desktop and mobile browsers. WCAG 2.1 AA accessibility standards shall be observed." },
   { re: /\b(integrat|api|third.?party|connect|sync|interface|webhook|aggregator)\b/i,
     category: "Interoperability",
-    desc: "System shall provide documented APIs and support third-party integration contracts." },
+    desc: "The system shall expose documented REST APIs and conform to agreed integration contracts with third-party vendors. API versioning shall be maintained to avoid breaking changes." },
   { re: /\b(maintain|support|update|patch|upgr|version)\b/i,
     category: "Maintainability",
-    desc: "System shall be modular to enable independent updates and patching." },
+    desc: "The system shall be architectured in modular, independently deployable components. Code coverage shall be maintained at ≥80% to enable safe change and refactoring." },
 ];
 
 function inferNFRs(allText, complianceSignals = {}) {
   const seen = new Set();
   const nfrs = [];
-
   NFR_PATTERNS.forEach(({ re, category, desc }) => {
     let matches = re.test(allText);
-
-    // Force Consent NFR if compliance signals detected
     if (category === "Regulatory Compliance & Consent" && complianceSignals.consent_required) matches = true;
-    // Force Storage NFR if signals detected
-    if (category === "Data Storage & Privacy" && complianceSignals.storage_restricted) matches = true;
-
+    if (category === "Data Storage & Privacy"          && complianceSignals.storage_restricted) matches = true;
     if (matches && !seen.has(category)) {
       seen.add(category);
       nfrs.push({ category, description: desc });
     }
   });
-
   return nfrs;
 }
 
 // ─── Business rules extraction ────────────────────────────────────────────────
-/**
- * Derives explicit business rules from requirement text and domain signals.
- * Rules are deterministic and traceable to source discussion text.
- */
 const BUSINESS_RULE_PATTERNS = [
   { re: /6 month|six month|last 6|minimum.*month|month.*minimum/i,
-    rule: "A minimum of 6 months of bank statement history is required for income assessment." },
+    rule: "A minimum of 6 months of bank statement history is required for income assessment. Submissions with fewer than 6 months of data shall be flagged for manual review." },
   { re: /salary.*narration|narration.*salary|narration format|identify.*salary|salary.*identif/i,
-    rule: "Salary credit narration patterns shall be matched across all major bank formats to correctly identify salary transactions." },
+    rule: "Salary credit narration patterns shall be matched against a configurable library of bank-specific narration formats to correctly identify salary transactions across all supported institutions." },
   { re: /average.*income|income.*average|average.*salary|average.*credit/i,
-    rule: "Average monthly income shall be calculated from salary credits over the most recent 6-month period." },
+    rule: "Average monthly income shall be computed from identified salary credits over the most recent 6-month period. Months with no salary credit shall be treated as zero and included in the average calculation." },
   { re: /not detected|salary not|no salary|manual review|manual underwr/i,
-    rule: "Cases where salary income cannot be automatically detected shall be routed to a human underwriter for manual review." },
+    rule: "Applications where automated salary identification yields no result shall be automatically routed to the manual underwriting queue. The routing decision shall be logged with the triggering reason." },
   { re: /irregular|inconsistent|sudden drop|drop in salary|irregular pattern/i,
-    rule: "Irregular income patterns (e.g. sudden salary drops, inconsistent credits) shall be flagged and assigned to the risk review queue." },
+    rule: "Irregular income patterns — including salary drops exceeding 30% month-on-month or more than 2 months of absent credit — shall be flagged as a risk indicator and attached to the case record." },
   { re: /bounced|bounce|cheque bounce|neft bounce/i,
-    rule: "Cheque and NEFT bounce incidents shall be counted and used as a negative credit signal." },
+    rule: "Cheque and NEFT return (bounce) events shall be counted over the statement period and used as a negative credit signal. Cases exceeding the defined bounce threshold shall be escalated to risk review." },
   { re: /emi|obligation|loan obligation|existing loan/i,
-    rule: "Existing EMI obligations identified in transactions shall be deducted from net income for eligibility calculation." },
+    rule: "Existing EMI obligations identified in the transaction data shall be aggregated and deducted from gross income to derive the net available income for eligibility assessment." },
   { re: /cash deposit|high.*cash|suspicious.*cash|large.*deposit/i,
-    rule: "High-value cash deposits within 90 days of loan application shall be flagged for fraud review." },
+    rule: "High-value cash deposits occurring within 90 days of loan application shall be automatically flagged for fraud review. The flagging threshold shall be configurable by the risk team." },
   { re: /consent|customer consent|permission.*fetch|fetch.*permission/i,
-    rule: "Customer explicit consent must be captured and stored before any bank statement data is fetched or processed." },
+    rule: "Customer explicit consent must be captured and stored before any bank statement data is fetched or processed. Processing initiated without a valid consent record is prohibited." },
   { re: /store.*summary|summary.*store|not.*full.*statement|only.*derived/i,
-    rule: "Only derived summary values (income average, EMI total, bounce count) shall be stored. Raw statement data must not be persisted." },
+    rule: "Only derived summary values (income average, EMI total, bounce count, risk flags) shall be stored post-processing. Raw statement data and full transaction records must not be persisted beyond the active processing session." },
   { re: /api.*response|response.*time|8.*second|10.*second|\d+.*second.*api/i,
-    rule: "Third-party API calls shall complete within the agreed response time window. Timeouts shall trigger a fallback or error notification." },
+    rule: "Third-party API integrations shall complete within the agreed response time SLA. Calls exceeding the timeout threshold shall trigger a configurable fallback response and generate an operational alert." },
   { re: /pdf.*initially|initially.*pdf|support.*pdf|pdf.*support/i,
-    rule: "PDF is the initially supported bank statement format. Net banking fetch may be introduced in a future phase." },
+    rule: "PDF is the supported bank statement format for Phase 1. Net banking fetch and direct aggregator access are deferred to Phase 2 and must not be included in the Phase 1 delivery scope." },
 ];
 
 function extractBusinessRules(allText) {
   const seen = new Set();
   const rules = [];
   BUSINESS_RULE_PATTERNS.forEach(({ re, rule }) => {
-    if (re.test(allText) && !seen.has(rule)) {
-      seen.add(rule);
-      rules.push(rule);
-    }
+    if (re.test(allText) && !seen.has(rule)) { seen.add(rule); rules.push(rule); }
   });
-  // Always include at least these two universal rules
   if (!rules.some((r) => /audit/i.test(r)))
-    rules.push("All state-changing operations shall be recorded in an immutable audit log.");
+    rules.push("All state-changing operations shall be recorded in an immutable audit log capturing actor identity, action, affected entity, input parameters, and outcome timestamp.");
   if (!rules.some((r) => /validation/i.test(r)))
-    rules.push("All business logic shall be validated server-side regardless of client-side validation.");
+    rules.push("All business logic and data validation shall be enforced server-side. Client-side validation is supplementary and must not be relied upon as the sole control.");
   return rules;
 }
 
 // ─── Integration requirements builder ────────────────────────────────────────
-/**
- * Builds a structured integration_requirements section from the
- * integration_signals extracted by the BRD agent.
- */
 function buildIntegrationRequirements(integrationSignals = {}) {
   const items = [];
   if (!integrationSignals || !integrationSignals.has_api_integration) return items;
 
   const { input_formats = [], output_formats = [], vendors = [], auth_type, api_response_time } = integrationSignals;
 
-  // Primary third-party API integration
   items.push({
     id:          "INT-001",
     type:        "REST API",
-    system:      vendors.length ? vendors[0] : "Third-Party Statement Parsing API",
+    system:      vendors.length ? vendors[0] : "Third-Party Bank Statement Parsing API",
     direction:   "Outbound",
-    input:       input_formats.join(" / ") || "PDF Document",
-    output:      output_formats.join(" / ") || "JSON Structured Data",
+    input:       input_formats.join(" / ") || "PDF Bank Statement",
+    output:      output_formats.join(" / ") || "JSON — structured transaction data",
     auth:        auth_type || "Secure API Key",
-    sla:         api_response_time ? `Response within ${api_response_time}` : "Response within agreed SLA",
-    description: `Integrate with ${vendors.length ? vendors[0] : "a third-party statement parsing API"} to parse bank statement documents and return structured transaction data.`,
+    sla:         api_response_time ? `Response within ${api_response_time}` : "Response within agreed SLA (recommended ≤10 s)",
+    description: `Outbound REST integration with ${vendors.length ? vendors[0] : "a certified third-party statement parsing API"} to extract structured transaction data from submitted bank statement documents. The API shall return a categorised JSON payload including salary credits, EMI transactions, bounce events, and summary balances.`,
   });
 
-  // Fallback / additional vendor if multiple detected
   if (vendors.length > 1) {
     items.push({
       id:          "INT-002",
       type:        "REST API",
       system:      vendors[1],
       direction:   "Outbound",
-      input:       input_formats.join(" / ") || "PDF Document",
+      input:       input_formats.join(" / ") || "PDF Bank Statement",
       output:      output_formats.join(" / ") || "JSON Structured Data",
       auth:        auth_type || "Secure API Key",
       sla:         api_response_time ? `Response within ${api_response_time}` : "Response within agreed SLA",
-      description: `Alternate integration with ${vendors[1]} as a fallback statement parsing provider.`,
+      description: `Fallback integration with ${vendors[1]} as an alternate statement parsing provider in the event the primary vendor is unavailable or returns an error response.`,
     });
   }
 
-  // Inbound document upload API if PDF detected
   if (input_formats.includes("PDF")) {
     items.push({
       id:          `INT-00${items.length + 1}`,
       type:        "File Upload",
-      system:      "Document Upload Service",
+      system:      "Document Upload & Temporary Storage Service",
       direction:   "Inbound",
-      input:       "PDF (max 6 months of statements)",
-      output:      "Stored document reference + parsed transaction JSON",
-      auth:        "JWT Bearer Token (customer session)",
-      sla:         "Upload processing < 30 seconds",
-      description: "Customer-facing file upload endpoint that accepts PDF bank statements, validates file size and format, and triggers parsing.",
+      input:       "PDF document (maximum file size per policy)",
+      output:      "Document reference ID + parsed transaction JSON",
+      auth:        "JWT Bearer Token (authenticated customer session)",
+      sla:         "Upload acknowledgement < 5 s; processing completion < 30 s",
+      description: "Customer-facing inbound file upload endpoint that accepts PDF bank statements, validates file type and size, stores the document temporarily during processing, and discards the raw file after data extraction is complete.",
     });
   }
 
@@ -221,24 +201,24 @@ const HIGH_PROB_RE   = /\b(certain|likely|probably|common|frequent|often|expecte
 const LOW_PROB_RE    = /\b(unlikely|rare|seldom|infrequent|exceptional)\b/i;
 
 function assessRisk(text) {
-  const impact      = HIGH_IMPACT_RE.test(text) ? "High" : LOW_IMPACT_RE.test(text) ? "Low" : "Medium";
-  const probability = HIGH_PROB_RE.test(text)   ? "High" : LOW_PROB_RE.test(text)   ? "Low" : "Medium";
+  const impact      = HIGH_IMPACT_RE.test(text) ? "High"   : LOW_IMPACT_RE.test(text) ? "Low"  : "Medium";
+  const probability = HIGH_PROB_RE.test(text)   ? "High"   : LOW_PROB_RE.test(text)   ? "Low"  : "Medium";
   return { impact, probability };
 }
 
 const MITIGATION_MAP = {
-  performance:  "Conduct early load testing; define SLA benchmarks; cache API responses where appropriate.",
-  security:     "Engage security team for threat modelling; implement OWASP guidelines; encrypt all PII at rest.",
-  integration:  "Prototype integration in discovery phase; agree API contracts and SLAs with vendor early.",
-  data:         "Define data governance policy; implement field-level encryption for financial data.",
-  timeline:     "Break work into milestones; flag blockers in weekly stand-ups.",
-  requirement:  "Schedule follow-up requirement workshops to clarify ambiguities.",
-  stakeholder:  "Establish regular stakeholder review cadence (bi-weekly check-ins).",
-  resource:     "Identify resource gaps early; escalate to project sponsor if needed.",
-  technical:    "Spike technical unknowns in early sprints; document architecture decisions.",
-  compliance:   "Engage legal/compliance team for consent framework review before implementation.",
-  fraud:        "Define fraud detection thresholds with the risk team; include in UAT scope.",
-  manual:       "Design manual review queue UX with operations team; define SLA for manual cases.",
+  performance:  "Conduct early load and performance testing. Define SLA benchmarks before development begins. Implement response caching and asynchronous processing for long-running operations.",
+  security:     "Engage the security team for threat modelling in the design phase. Implement OWASP Top 10 mitigations. Conduct penetration testing before go-live. Encrypt all PII and financial data at rest and in transit.",
+  integration:  "Prototype the integration in a discovery spike. Agree API contracts, error handling, and SLA commitments with the vendor before implementation. Define and test fallback behaviour.",
+  data:         "Define a data governance policy covering classification, retention, and access. Implement field-level encryption for financial and personal data. Validate data lineage and accuracy in UAT.",
+  timeline:     "Break delivery into defined milestones with documented acceptance criteria. Surface blockers in weekly status reviews. Escalate to the project sponsor if critical path items are at risk.",
+  requirement:  "Schedule targeted requirement workshops to resolve ambiguities. Document decisions and obtain stakeholder sign-off before development commences.",
+  stakeholder:  "Establish a regular stakeholder review cadence (minimum bi-weekly). Document and circulate meeting minutes. Ensure key decisions are formally approved.",
+  resource:     "Identify resource gaps at the planning stage. Agree contingency cover for critical roles. Escalate to the project sponsor immediately if gaps cannot be resolved internally.",
+  technical:    "Spike technical unknowns in early sprints to de-risk the delivery. Document architecture decisions using ADRs. Ensure senior technical review of all design choices.",
+  compliance:   "Engage the legal and compliance team to review the consent framework, data retention policy, and regulatory obligations before implementation begins.",
+  fraud:        "Define fraud detection thresholds and rules collaboratively with the risk team. Include fraud scenario coverage in UAT. Plan a post-launch monitoring and tuning phase.",
+  manual:       "Design the manual review queue UX in collaboration with the operations team. Define and agree a service level for manual case resolution. Include manual workflow in UAT scope.",
 };
 
 function deriveMitigation(text) {
@@ -246,24 +226,7 @@ function deriveMitigation(text) {
   for (const [keyword, mitigation] of Object.entries(MITIGATION_MAP)) {
     if (lower.includes(keyword)) return mitigation;
   }
-  return "Assign a risk owner; monitor at each sprint review and escalate if threshold is breached.";
-}
-
-// ─── Scope inference ──────────────────────────────────────────────────────────
-const SCOPE_EXCLUDE_RE = /\b(not included|out of scope|excluded|won't|will not|future|phase 2|next release|later|deferred)\b/i;
-const DEFAULT_OOS = [
-  "Net banking fetch integration (deferred to Phase 2)",
-  "Full bank statement storage (only derived summary values stored)",
-  "Third-party credit bureau integration (separate initiative)",
-  "Mobile native application (web-responsive only in Phase 1)",
-];
-
-function extractOutOfScope(requirements, concerns) {
-  const oos = [];
-  [...requirements, ...concerns].forEach((item) => {
-    if (SCOPE_EXCLUDE_RE.test(item)) oos.push(item);
-  });
-  return oos.length ? oos : DEFAULT_OOS.slice(0, 3);
+  return "Assign a named risk owner. Review risk status at each sprint review and milestone gate. Escalate immediately if the risk materialises or the likelihood increases.";
 }
 
 // ─── Stakeholder extraction ───────────────────────────────────────────────────
@@ -276,9 +239,8 @@ function extractStakeholders(messages, requestInfo) {
       ? "Primary Stakeholder / Business Owner"
       : "Discussion Participant",
   }));
-  if (requestInfo.stakeholder_name && !names.has(requestInfo.stakeholder_name)) {
+  if (requestInfo.stakeholder_name && !names.has(requestInfo.stakeholder_name))
     list.unshift({ name: requestInfo.stakeholder_name, role: "Primary Stakeholder / Business Owner" });
-  }
   list.push({ name: "Business Analyst",   role: "BRD Author / Requirements Owner" });
   list.push({ name: "IT Implementation",  role: "Technical Feasibility & Implementation" });
   return list;
@@ -311,16 +273,15 @@ async function generateText(prompt, maxTokens = 120) {
   }
 }
 
-// ─── Formal requirement rewriter ─────────────────────────────────────────────
+// ─── Formal requirement rewriter (fallback for unclustered messages) ──────────
 async function formaliseRequirement(text) {
   const cleaned = cleanToRequirement(text);
   if (/^the system shall/i.test(cleaned)) return cap(cleaned);
 
   const prompt = `Rewrite as a concise formal business system requirement starting with "The system shall". Input: ${cleaned.slice(0, 180)}`;
   const out    = await generateText(prompt, 80);
-  if (out.length > 15 && /^The system shall/i.test(out) && out.length < 300 && !out.toLowerCase().startsWith(cleaned.slice(0, 20).toLowerCase())) {
+  if (out.length > 15 && /^The system shall/i.test(out) && out.length < 300 && !out.toLowerCase().startsWith(cleaned.slice(0, 20).toLowerCase()))
     return cap(out);
-  }
 
   const core = cleaned
     .replace(/^(vendor costs have (gone up|increased)|costs have (gone up|increased))/i, "track and manage vendor costs that have increased")
@@ -330,55 +291,474 @@ async function formaliseRequirement(text) {
   return `The system shall ${core.charAt(0).toLowerCase() + core.slice(1)}`;
 }
 
-// ─── Executive summary ────────────────────────────────────────────────────────
-async function generateExecutiveSummary(analysis, requestInfo) {
-  const cleanedReqs = (analysis.key_requirements || []).slice(0, 3).map(cleanToRequirement).filter((r) => r.length > 8);
-  const keywords    = (analysis.keywords || []).slice(0, 6).join(", ");
-  const domain      = requestInfo.category || "General";
-  const title       = requestInfo.title || "this initiative";
-  const priority    = (requestInfo.priority || "Medium").toLowerCase();
+// ─── Functional area definitions ──────────────────────────────────────────────
+/**
+ * Each area has:
+ *  - id        unique area key
+ *  - name      display name (becomes FR title)
+ *  - signals   regex array for matching messages to this area
+ *  - priority  MoSCoW default
+ *  - build(matchedTexts, signals, keywords, requestInfo)  → { description, rationale }
+ */
+const FUNCTIONAL_AREAS = [
+  {
+    id: "upload",
+    name: "Document Upload & Bank Statement Ingestion",
+    signals: [/upload|pdf|statement|bank statement|document|attach|submit.*statement|import.*file/i],
+    priority: "Must Have",
+    build(_, signals) {
+      const fmts = signals.input_formats?.length ? signals.input_formats.join(" and ") : "PDF";
+      return {
+        description:
+          `The system shall provide a secure, customer-facing document upload interface that accepts bank statements in ${fmts} format. ` +
+          `Uploaded documents shall be validated for file type compliance, maximum file size, and structural integrity prior to acceptance. ` +
+          `Each successful upload shall generate a unique document reference identifier and trigger the automated parsing workflow. ` +
+          `Upload progress shall be communicated to the customer in real time. Validation failures shall be surfaced with clear, actionable error messages. ` +
+          `The raw document shall be discarded from storage immediately after extraction is complete, in line with data minimisation requirements.`,
+        rationale:
+          "Bank statement ingestion is the foundational step upon which all downstream income assessment and risk analysis depends. A reliable, secure upload mechanism is a prerequisite for every other functional capability in this initiative.",
+      };
+    },
+  },
+  {
+    id: "parsing",
+    name: "Third-Party Data Parsing & API Integration",
+    signals: [/api|parse|extract.*data|third.?party|aggregator|integration|statement pars/i],
+    priority: "Must Have",
+    build(_, signals) {
+      const vendor  = signals.vendors?.[0] || "the configured third-party parsing API";
+      const formats = signals.output_formats?.length ? signals.output_formats.join(" / ") : "JSON";
+      const sla     = signals.api_response_time || "the agreed response time SLA";
+      return {
+        description:
+          `The system shall integrate with ${vendor} to extract structured transaction data from submitted bank statement documents. ` +
+          `The integration shall be implemented as a secure, authenticated outbound REST API call. ` +
+          `The API shall return a structured ${formats} payload containing categorised transaction records within ${sla}. ` +
+          `The system shall implement configurable timeout handling: calls exceeding the SLA threshold shall trigger a fallback response and generate an operational alert. ` +
+          `API credentials shall be stored as environment-scoped secrets and must not be embedded in source code or logs.`,
+        rationale:
+          "The parsing API is the primary data enrichment engine. Its reliability, response quality, and error handling directly determine the accuracy of the income assessment output.",
+      };
+    },
+  },
+  {
+    id: "income_assessment",
+    name: "Financial Data Extraction & Income Assessment Engine",
+    signals: [/salary|income|calculate|average.*income|average.*salary|emi|obligation|bounce|narration|6 month|income assessment|credit.*identify/i],
+    priority: "Must Have",
+    build() {
+      return {
+        description:
+          `The system shall execute an automated income assessment engine against the extracted transaction data. The engine shall: ` +
+          `(a) identify salary credit narrations across supported bank formats using a configurable, maintainable pattern-matching library; ` +
+          `(b) compute the applicant's average monthly income from salary credits over the most recent six-month period; ` +
+          `(c) aggregate all existing EMI obligations identified in the transaction history to derive the net repayment capacity; ` +
+          `(d) count cheque and NEFT return (bounce) incidents as a credit risk signal. ` +
+          `The resulting financial summary — comprising average income, EMI total, bounce count, and assessment status — shall be stored as a structured record and used as the primary input for the eligibility determination workflow.`,
+        rationale:
+          "Accurate and standardised income assessment is the core business objective of this initiative. The calculation methodology must be consistent, configurable, auditable, and aligned with the organisation's credit policy to ensure sound lending decisions.",
+      };
+    },
+  },
+  {
+    id: "fraud_risk",
+    name: "Risk Assessment & Fraud Detection",
+    signals: [/fraud|suspicious|cash deposit|irregular|inconsistent|pattern|anomal|detect.*risk|risk.*flag|bounce.*risk/i],
+    priority: "Must Have",
+    build() {
+      return {
+        description:
+          `The system shall apply a configurable ruleset of fraud detection and risk indicators to the extracted transaction data. ` +
+          `Suspicious signals — including high-value cash deposits within 90 days of application, sudden income drops exceeding defined thresholds, ` +
+          `absent or highly irregular salary credits, and elevated bounce counts — shall be identified and attached to the case record as structured risk flags. ` +
+          `Cases exceeding configurable risk score thresholds shall be automatically escalated to the risk review queue. ` +
+          `All fraud detection rule configurations shall be manageable by authorised risk personnel without requiring a code deployment.`,
+        rationale:
+          "Fraud detection protects the organisation from credit risk and financial loss. Automated flagging ensures that high-risk applications receive appropriate scrutiny without creating operational bottlenecks for clean cases.",
+      };
+    },
+  },
+  {
+    id: "consent",
+    name: "Customer Consent Capture & Regulatory Compliance",
+    signals: [/consent|permission|authoris|approval before|customer must agree|gdpr|regulatory|privacy/i],
+    priority: "Must Have",
+    build() {
+      return {
+        description:
+          `The system shall obtain and record explicit, informed customer consent before initiating any bank data fetch or document processing. ` +
+          `The consent capture interface shall clearly describe: the data to be accessed, the purpose of processing, the third parties involved, and the data retention policy. ` +
+          `Consent records shall be timestamped, attributed to the authenticated customer session, and stored in an immutable log. ` +
+          `Processing must not proceed — and the system must prevent API calls from being made — in the absence of a valid, recorded consent event. ` +
+          `The consent framework shall be reviewed and approved by the legal/compliance team before implementation.`,
+        rationale:
+          "Explicit consent is a regulatory obligation under applicable data protection law. Failure to obtain and evidence consent exposes the organisation to regulatory enforcement action and reputational risk.",
+      };
+    },
+  },
+  {
+    id: "routing",
+    name: "Automated Case Routing & Manual Underwriting Workflow",
+    signals: [/manual review|underwr|route|fallback|not detected|escalat|queue|assign.*case|case.*assign/i],
+    priority: "Must Have",
+    build() {
+      return {
+        description:
+          `The system shall implement an automated case routing engine that directs each completed income assessment to the appropriate outcome path. ` +
+          `Cases meeting all defined eligibility criteria shall be marked for automated progression. ` +
+          `Cases where salary income cannot be reliably identified, where fraud risk indicators are flagged, or where data quality is insufficient ` +
+          `shall be automatically routed to the manual underwriting queue with a structured case summary. ` +
+          `The manual review interface shall present the assigned underwriter with all extracted financial data, risk flags, and a structured decision capture form. ` +
+          `Routing decisions and manual overrides shall be fully logged for audit purposes.`,
+        rationale:
+          "Not all applications can be assessed automatically. A defined fallback routing mechanism ensures that edge cases and high-risk applications receive appropriate human review without creating operational ambiguity.",
+      };
+    },
+  },
+  {
+    id: "notification",
+    name: "Automated Notifications & Stakeholder Communication",
+    signals: [/notif|alert|email|message.*customer|inform.*customer|communication|status.*update/i],
+    priority: "Should Have",
+    build() {
+      return {
+        description:
+          `The system shall dispatch automated notifications to relevant parties at defined process milestones, including: ` +
+          `document receipt confirmation, processing completion, assessment outcome (approved / referred / declined), and manual review routing. ` +
+          `Notifications shall be delivered via the configured channel (email, SMS, or portal message) within a defined SLA. ` +
+          `Failed notification attempts shall be retried up to three times before an operational alert is raised. ` +
+          `Notification templates shall be configurable by authorised administrators without requiring a code change.`,
+        rationale:
+          "Timely, accurate communication maintains customer confidence and operational transparency. Automated notifications reduce manual follow-up effort and create a consistent, auditable communication trail.",
+      };
+    },
+  },
+  {
+    id: "audit",
+    name: "Audit Logging, Data Governance & Storage Policy",
+    signals: [/audit|log.*action|track.*event|compliance.*log|store only|summary.*only|not.*store.*raw|derived.*value/i],
+    priority: "Must Have",
+    build() {
+      return {
+        description:
+          `The system shall maintain a comprehensive, immutable audit log recording all significant events including: consent grants, document uploads, API calls, processing decisions, routing events, and manual review outcomes. ` +
+          `Each audit record shall capture the actor identity, action performed, affected entities, input parameters, outcome, and UTC timestamp. ` +
+          `Audit logs shall be stored in a separate, access-controlled data store and shall be read-only to all non-compliance roles. ` +
+          `In alignment with the data minimisation principle, only derived financial summary values shall be persisted post-processing. ` +
+          `Raw bank statement files and full transaction records shall not be retained beyond the active processing session.`,
+        rationale:
+          "A complete audit trail is a regulatory and legal requirement. Data minimisation (storing only derived summaries) reduces the organisation's data liability and simplifies compliance with data protection obligations.",
+      };
+    },
+  },
+];
 
+/**
+ * Groups each requirement from the agent into the best-matching functional area.
+ * Returns: { area: AreaDef, matchedTexts: string[] }[]
+ */
+function groupRequirementsByArea(requirements, allText, signals) {
+  const matched = new Map(); // areaId → { area, texts }
+
+  FUNCTIONAL_AREAS.forEach((area) => {
+    const texts = requirements.filter((r) =>
+      area.signals.some((re) => re.test(r))
+    );
+    if (texts.length > 0) matched.set(area.id, { area, texts });
+  });
+
+  // Also activate areas based on domain signals in the FULL text
+  FUNCTIONAL_AREAS.forEach((area) => {
+    if (!matched.has(area.id) && area.signals.some((re) => re.test(allText))) {
+      matched.set(area.id, { area, texts: [] });
+    }
+  });
+
+  return [...matched.values()];
+}
+
+/**
+ * Builds the functional requirements list from grouped areas + unclustered messages.
+ * Each area → one comprehensive, professional FR.
+ * Unclustered messages → individually formalised FRs.
+ */
+async function buildFunctionalRequirements(requirements, allText, integrationSignals, keywords) {
+  const grouped   = groupRequirementsByArea(requirements, allText, integrationSignals);
+  const clusteredTexts = new Set(grouped.flatMap((g) => g.texts));
+  const unclustered    = requirements.filter((r) => !clusteredTexts.has(r));
+
+  const frs = [];
+  let counter = 1;
+
+  // One comprehensive FR per functional area
+  for (const { area, texts } of grouped) {
+    const { description, rationale } = area.build(texts, integrationSignals, keywords);
+    frs.push({
+      id:          `FR-${String(counter++).padStart(3, "0")}`,
+      title:       area.name,
+      description,
+      rationale,
+      priority:    area.priority,
+      source:      texts.length > 0 ? "Key Stakeholder Discussion" : "Domain Signal (best practice inclusion)",
+    });
+  }
+
+  // Individually formalised fallback FRs for unclustered messages
+  for (const req of unclustered.slice(0, 4)) {
+    const formal = await formaliseRequirement(req);
+    frs.push({
+      id:          `FR-${String(counter++).padStart(3, "0")}`,
+      title:       formal.split(" ").slice(0, 8).join(" "),
+      description: formal,
+      rationale:   "",
+      priority:    moscowPriority(req),
+      source:      "Key Stakeholder Discussion",
+    });
+  }
+
+  return frs;
+}
+
+// ─── Scope section builder ─────────────────────────────────────────────────────
+/**
+ * Produces a professional scope section:
+ *  - summary    prose narrative (2-3 sentences)
+ *  - in_scope   functional area descriptions (NOT raw chat messages)
+ *  - out_of_scope
+ *  - process_flow  end-to-end business process steps
+ */
+function buildScopeSection(grouped, requestInfo, allText, integrationSignals, complianceSignals) {
+  const title    = requestInfo.title    || "this initiative";
+  const category = requestInfo.category || "General";
+  const domain   = category.toLowerCase();
+
+  // In-scope = area names + brief descriptor
+  const inScope = grouped.map(({ area }) => area.name);
+
+  // Default if nothing matched
+  if (inScope.length === 0) {
+    inScope.push(
+      "Core system functionality as described in the approved requirements",
+      "User authentication, authorisation, and role-based access control",
+      "Audit logging and compliance record management"
+    );
+  }
+
+  // Out-of-scope defaults (can be overridden by detected exclusion language)
+  const DEFAULT_OOS = [
+    "Net banking direct fetch integration (deferred to Phase 2 pending regulatory clearance)",
+    "Mobile native application — Phase 1 delivers a mobile-responsive web interface only",
+    "Full bank statement archival — only derived financial summaries are stored post-processing",
+    "Third-party credit bureau integration — separate initiative, not in scope for this delivery",
+  ];
+
+  const SCOPE_EXCLUDE_RE = /\b(not included|out of scope|excluded|won't|will not|future|phase 2|next release|later|deferred)\b/i;
+  const detectedOOS = [];
+  allText.split(/[.;]/).forEach((sentence) => {
+    if (SCOPE_EXCLUDE_RE.test(sentence) && sentence.trim().length > 10)
+      detectedOOS.push(cap(sentence.trim()));
+  });
+  const outOfScope = detectedOOS.length ? detectedOOS.slice(0, 4) : DEFAULT_OOS.slice(0, 3);
+
+  // Scope summary narrative
+  const areaCount  = inScope.length;
+  const firstArea  = inScope[0]?.toLowerCase() ?? "data ingestion";
+  const lastArea   = inScope[areaCount - 1]?.toLowerCase() ?? "audit and governance";
+  const summary =
+    `This initiative delivers an end-to-end ${domain} processing capability for "${title}". ` +
+    `The system scope encompasses ${areaCount} core functional area${areaCount > 1 ? "s" : ""}, spanning ${firstArea} through to ${lastArea}. ` +
+    `All items listed below constitute the Phase 1 delivery scope. Capabilities noted as out-of-scope are explicitly excluded and must not be included in the Phase 1 build or testing.`;
+
+  // Business process flow
+  const processFlow = buildProcessFlow(allText, integrationSignals, title);
+
+  return { summary, in_scope: inScope, out_of_scope: outOfScope, process_flow: processFlow };
+}
+
+// ─── Business process flow builder ────────────────────────────────────────────
+/**
+ * Derives a numbered end-to-end business process flow from domain signals.
+ * This is a high-level BUSINESS flow — not technical implementation steps.
+ */
+function buildProcessFlow(allText, integrationSignals, title) {
+  const steps = [];
+
+  const has = (re) => re.test(allText);
+
+  if (has(/consent|permission|authoris|approval before/i)) {
+    steps.push({
+      step:    1,
+      actor:   "Customer",
+      action:  "Reviews the data access and processing consent notice and grants explicit approval",
+      outcome: "Consent record created with timestamp and session attribution; processing unlocked",
+    });
+  }
+
+  if (has(/upload|pdf|statement|document/i)) {
+    steps.push({
+      step:    steps.length + 1,
+      actor:   "Customer",
+      action:  "Uploads bank statement(s) via the portal interface",
+      outcome: "Document validated; unique reference ID generated; parsing workflow triggered",
+    });
+  } else {
+    steps.push({
+      step:    steps.length + 1,
+      actor:   "User",
+      action:  "Initiates the business process and submits required inputs via the system interface",
+      outcome: "Inputs validated; processing workflow initiated",
+    });
+  }
+
+  if (has(/validate|format|integrity|size/i) || has(/upload/i)) {
+    steps.push({
+      step:    steps.length + 1,
+      actor:   "System",
+      action:  "Validates uploaded document for file type, size constraints, and structural integrity",
+      outcome: "Document accepted or rejected with a descriptive error message returned to the customer",
+    });
+  }
+
+  if (integrationSignals?.has_api_integration || has(/api|parse|third.?party|aggregator/i)) {
+    steps.push({
+      step:    steps.length + 1,
+      actor:   "System",
+      action:  "Submits validated document to the configured third-party parsing API via secure, authenticated REST call",
+      outcome: "Structured transaction JSON received — salary credits, EMIs, balances, and bounce events categorised",
+    });
+  }
+
+  if (has(/salary|income|calculate|average|emi|obligation|bounce/i)) {
+    steps.push({
+      step:    steps.length + 1,
+      actor:   "System",
+      action:  "Executes the income assessment engine: identifies salary credits, calculates 6-month average income, aggregates EMI obligations, counts bounce events",
+      outcome: "Financial summary record created and stored; assessment status set",
+    });
+  }
+
+  if (has(/fraud|suspicious|risk|irregular|cash deposit/i)) {
+    steps.push({
+      step:    steps.length + 1,
+      actor:   "System",
+      action:  "Applies fraud detection rules and risk scoring to the extracted transaction data",
+      outcome: "Risk flags attached to case record; high-risk cases marked for escalation",
+    });
+  }
+
+  if (has(/manual review|underwr|route|fallback|queue/i)) {
+    steps.push({
+      step:    steps.length + 1,
+      actor:   "System",
+      action:  "Routes the case based on assessment outcome: eligible cases progress automatically; insufficient or flagged cases are directed to the manual underwriting queue",
+      outcome: "Case status updated; underwriter assigned and notified if manual review is required",
+    });
+  }
+
+  if (has(/notif|alert|email|inform/i)) {
+    steps.push({
+      step:    steps.length + 1,
+      actor:   "System",
+      action:  "Dispatches automated notification to the customer and relevant internal stakeholders with the assessment outcome",
+      outcome: "Notification delivered within SLA; delivery confirmed and logged",
+    });
+  }
+
+  steps.push({
+    step:    steps.length + 1,
+    actor:   "System",
+    action:  "Writes a complete, immutable audit log entry recording all actors, decisions, API interactions, and timestamps for this processing cycle",
+    outcome: "Compliance record created; audit trail closed for this case",
+  });
+
+  // Re-number sequentially
+  return steps.map((s, i) => ({ ...s, step: i + 1 }));
+}
+
+// ─── Executive summary — professional template ─────────────────────────────────
+async function generateExecutiveSummary(analysis, requestInfo, integrationSignals, complianceSignals) {
+  const title    = requestInfo.title    || "this initiative";
+  const category = requestInfo.category || "General";
+  const priority = requestInfo.priority || "Medium";
+  const keywords = (analysis.keywords || []).slice(0, 5).join(", ");
+
+  // Try Flan-T5 first
   const prompt =
-    `Write a 2-sentence professional executive summary for a Business Requirements Document.\n` +
-    `Project: "${title}". Domain: ${domain}. Priority: ${priority}.\n` +
-    `Key topics: ${keywords || domain}.\nExecutive Summary:`;
+    `Write a professional 3-sentence executive summary for a Business Requirements Document.\n` +
+    `Project: "${title}". Domain: ${category}. Priority: ${priority}.\n` +
+    `Key topics: ${keywords || category}. Include business problem, proposed solution, and expected benefit.\nExecutive Summary:`;
+  const aiOut = await generateText(prompt, 150);
+  if (
+    aiOut.length > 60 &&
+    !aiOut.includes("undefined") &&
+    !aiOut.toLowerCase().includes(prompt.slice(0, 15).toLowerCase())
+  ) return aiOut;
 
-  const out = await generateText(prompt, 120);
-  if (out.length > 40 && !out.includes("undefined") && !out.includes(prompt.slice(0, 20))) return out;
+  // Structured template fallback
+  const hasIntegration = integrationSignals?.has_api_integration;
+  const hasConsent     = complianceSignals?.consent_required;
+  const hasStorage     = complianceSignals?.storage_restricted;
 
-  const focus = cleanedReqs.length
-    ? cleanedReqs[0].charAt(0).toLowerCase() + cleanedReqs[0].slice(1)
-    : `${domain.toLowerCase()} operational improvements`;
+  const problemCtx  = keywords ? `involving ${keywords}` : `in the ${category.toLowerCase()} domain`;
+  const solutionCtx = hasIntegration
+    ? `an integrated, automated solution with third-party API connectivity`
+    : `a structured digital solution`;
+  const complianceCtx = hasConsent || hasStorage
+    ? ` The solution incorporates regulatory compliance controls including customer consent management and data minimisation to meet applicable data protection obligations.`
+    : "";
 
   return (
-    `This Business Requirements Document defines the functional and non-functional requirements ` +
-    `for the "${cap(title)}" initiative within the ${domain} domain. ` +
-    `The project focuses on ${focus}, with ${priority} priority to deliver measurable business outcomes and ` +
-    `${keywords ? `improvements in ${keywords}` : "operational efficiency gains"}.`
+    `This Business Requirements Document defines the functional scope, process flow, integration specifications, and compliance obligations for the "${cap(title)}" initiative ${problemCtx}. ` +
+    `The organisation requires ${solutionCtx} to address identified operational gaps, improve processing efficiency, and deliver consistent, auditable outcomes for all stakeholders. ` +
+    `Delivery of this initiative at ${priority.toLowerCase()} priority is expected to improve operational efficiency, reduce manual effort, and provide measurable business value.` +
+    complianceCtx
   );
 }
 
-// ─── Business objective ───────────────────────────────────────────────────────
-async function generateObjective(analysis, requestInfo) {
-  const domain   = requestInfo.category || "General";
-  const title    = requestInfo.title || "this initiative";
-  const priority = (requestInfo.priority || "Medium").toLowerCase();
-  const keywords = (analysis.keywords || []).slice(0, 4).join(", ");
+// ─── Business objective — SMART template ──────────────────────────────────────
+async function generateObjective(analysis, requestInfo, grouped) {
+  const title    = requestInfo.title    || "this initiative";
+  const category = requestInfo.category || "General";
+  const priority = requestInfo.priority || "Medium";
 
   const prompt =
-    `Write a 2-sentence business objective statement.\n` +
-    `Project: "${title}". Domain: ${domain}. Priority: ${priority}.\n` +
-    `State the business purpose and the expected measurable outcome.\nObjective:`;
+    `Write a 2-sentence SMART business objective for: "${title}" in the ${category} domain.\n` +
+    `State the specific business purpose and a measurable expected outcome.\nObjective:`;
+  const aiOut = await generateText(prompt, 100);
+  if (aiOut.length > 30 && !aiOut.includes("undefined") && !/^(write|provide)/i.test(aiOut))
+    return aiOut;
 
-  const out = await generateText(prompt, 90);
-  if (out.length > 30 && !out.includes("undefined") && !out.includes(prompt.slice(0, 20))) return out;
+  const areaNames = grouped.map((g) => g.area.name.toLowerCase()).slice(0, 3);
+  const coverageStr = areaNames.length
+    ? areaNames.join(", ")
+    : `${category.toLowerCase()} process management`;
 
   return (
-    `To deliver a comprehensive solution that addresses the identified ${domain.toLowerCase()} ` +
-    `business challenges outlined in the "${cap(title)}" initiative, with ${priority} priority focus. ` +
-    `This initiative aims to improve ${keywords || domain.toLowerCase() + " efficiency"}, ` +
-    `reduce operational costs, and provide measurable business value aligned with organisational goals.`
+    `To deliver a comprehensive, automated ${category.toLowerCase()} processing capability for "${cap(title)}" that covers ${coverageStr}, ` +
+    `with ${priority.toLowerCase()} priority focus and measurable outcomes aligned to the organisation's operational and regulatory obligations. ` +
+    `Success will be measured by a reduction in manual processing time, full traceability of all processing decisions, and compliance with applicable regulatory requirements from day one of production operation.`
   );
+}
+
+// ─── Goals derivation ─────────────────────────────────────────────────────────
+function buildGoals(grouped, requestInfo, integrationSignals, complianceSignals) {
+  const goals = [];
+  const title  = requestInfo.title || "the initiative";
+
+  goals.push(`Deliver an end-to-end, automated ${(requestInfo.category || "business").toLowerCase()} processing workflow from ${grouped[0]?.area.name.toLowerCase() ?? "data ingestion"} to ${grouped[grouped.length - 1]?.area.name.toLowerCase() ?? "audit logging"}`);
+
+  if (grouped.some((g) => g.area.id === "income_assessment" || g.area.id === "fraud_risk"))
+    goals.push("Eliminate manual data extraction effort through automated income assessment and risk scoring, with configurable rules maintained by the business team");
+
+  if (integrationSignals?.has_api_integration)
+    goals.push(`Establish reliable, SLA-governed third-party API integration for real-time bank statement data enrichment`);
+
+  if (complianceSignals?.consent_required || complianceSignals?.storage_restricted)
+    goals.push("Achieve full regulatory compliance — including customer consent capture and data minimisation — from the first production release");
+
+  goals.push("Maintain complete, immutable audit traceability for every processing decision to support regulatory review and internal governance requirements");
+
+  return goals.slice(0, 5);
 }
 
 // ─── BRD Enhancement (from stakeholder feedback) ─────────────────────────────
@@ -396,11 +776,11 @@ export async function enhanceBRD(existingBrd, improvementComments, requestInfo) 
     `Revise this Business Requirements Document executive summary based on stakeholder feedback.\n` +
     `Original: "${ex.executive_summary.text.slice(0, 300)}"\n` +
     `Feedback: "${commentsText.slice(0, 300)}"\n` +
-    `Write an improved 2-sentence professional executive summary:`;
-  const newExecSummary = await generateText(execPrompt, 120);
+    `Write an improved 3-sentence professional executive summary covering: problem, solution, benefit:`;
+  const newExecSummary = await generateText(execPrompt, 150);
 
-  const existingReqTexts = ex.functional_requirements.items.map((fr) => fr.original || fr.description);
-  const extractReqPrompt = `From these stakeholder review comments, extract any new system requirements or changes needed: "${commentsText}". List each as a brief requirement. If none, say "none".`;
+  const existingReqTexts = ex.functional_requirements.items.map((fr) => fr.description);
+  const extractReqPrompt = `From these stakeholder review comments, extract any new system requirements: "${commentsText}". List each as a brief requirement. If none, say "none".`;
   const extractedReqs    = await generateText(extractReqPrompt, 80);
 
   const allReqTexts = [...existingReqTexts];
@@ -411,14 +791,15 @@ export async function enhanceBRD(existingBrd, improvementComments, requestInfo) 
 
   const formalRequirements = [];
   for (const [i, req] of allReqTexts.entries()) {
-    const formal = await formaliseRequirement(req);
     const isNew  = i >= existingReqTexts.length;
+    const formal = await formaliseRequirement(req);
     formalRequirements.push({
       id:          `FR-${String(i + 1).padStart(3, "0")}`,
+      title:       ex.functional_requirements.items[i]?.title ?? formal.split(" ").slice(0, 8).join(" "),
       description: formal,
+      rationale:   ex.functional_requirements.items[i]?.rationale ?? "",
       priority:    moscowPriority(req),
       source:      isNew ? `Stakeholder Feedback (v${newVersion})` : ex.functional_requirements.items[i]?.source ?? "Key Conversation (Revised)",
-      original:    cap(req),
     });
   }
 
@@ -445,11 +826,15 @@ export async function enhanceBRD(existingBrd, improvementComments, requestInfo) 
     },
     sections: {
       ...ex,
-      executive_summary: { ...ex.executive_summary, text: newExecSummary.length > 40 && !newExecSummary.includes("undefined") ? newExecSummary : `${ex.executive_summary.text} This version incorporates ${improvementComments.length} stakeholder review(s).` },
-      scope:                    { ...ex.scope, in_scope: formalRequirements.map((r) => r.original) },
-      functional_requirements:  { ...ex.functional_requirements, items: formalRequirements },
+      executive_summary: {
+        ...ex.executive_summary,
+        text: newExecSummary.length > 40 && !newExecSummary.includes("undefined")
+          ? newExecSummary
+          : `${ex.executive_summary.text} This version incorporates ${improvementComments.length} stakeholder review(s).`,
+      },
+      functional_requirements:     { ...ex.functional_requirements, items: formalRequirements },
       non_functional_requirements: { ...ex.non_functional_requirements, items: nfrs },
-      risk_register:            { ...ex.risk_register, items: newRisks },
+      risk_register:               { ...ex.risk_register, items: newRisks },
     },
   };
 }
@@ -465,69 +850,65 @@ export async function generateBRD(analysis, requestInfo, messages = []) {
   const allMsgText     = messages.map((m) => m.message_text).join(" ");
   const allText        = `${allReqText} ${allConcernText} ${allMsgText}`;
 
-  // Integration and compliance signals from the agent
   const integrationSignals = analysis.integration_signals || {};
   const complianceSignals  = analysis.compliance_signals  || {};
 
-  // ── Parallel AI tasks ────────────────────────────────────────────────────
+  // ── 1. Group requirements into functional areas ──────────────────────────
+  const grouped = groupRequirementsByArea(analysis.key_requirements || [], allText, integrationSignals);
+
+  // ── 2. Parallel AI tasks ─────────────────────────────────────────────────
   const [execSummary, objective] = await Promise.all([
-    generateExecutiveSummary(analysis, requestInfo),
-    generateObjective(analysis, requestInfo),
+    generateExecutiveSummary(analysis, requestInfo, integrationSignals, complianceSignals),
+    generateObjective(analysis, requestInfo, grouped),
   ]);
 
-  // ── Formal functional requirements ───────────────────────────────────────
-  const formalRequirements = [];
-  for (const [i, req] of (analysis.key_requirements || []).entries()) {
-    const formal = await formaliseRequirement(req);
-    formalRequirements.push({
-      id:          `FR-${String(i + 1).padStart(3, "0")}`,
-      description: formal,
-      priority:    moscowPriority(req),
-      source:      "Key Conversation",
-      original:    cap(req),
-    });
-  }
+  // ── 3. Goals ─────────────────────────────────────────────────────────────
+  const goals = buildGoals(grouped, requestInfo, integrationSignals, complianceSignals);
 
-  // ── NFRs (expanded) ──────────────────────────────────────────────────────
+  // ── 4. Scope (narrative + process flow — NOT copy-paste of requirements) ─
+  const scope = buildScopeSection(grouped, requestInfo, allText, integrationSignals, complianceSignals);
+
+  // ── 5. Functional requirements (synthesised per area) ────────────────────
+  const formalRequirements = await buildFunctionalRequirements(
+    analysis.key_requirements || [], allText, integrationSignals, analysis.keywords || []
+  );
+
+  // ── 6. NFRs ──────────────────────────────────────────────────────────────
   const nfrs = inferNFRs(allText, complianceSignals).map((nfr, i) => ({
     id: `NFR-${String(i + 1).padStart(3, "0")}`,
     ...nfr,
   }));
 
-  // ── Business Rules ───────────────────────────────────────────────────────
+  // ── 7. Business Rules ─────────────────────────────────────────────────────
   const businessRules = extractBusinessRules(allText).map((rule, i) => ({
     id:          `BR-${String(i + 1).padStart(3, "0")}`,
     description: rule,
   }));
 
-  // ── Integration Requirements ─────────────────────────────────────────────
+  // ── 8. Integration Requirements ──────────────────────────────────────────
   const integrationRequirements = buildIntegrationRequirements(integrationSignals);
 
-  // ── Risk register ────────────────────────────────────────────────────────
+  // ── 9. Risk register ─────────────────────────────────────────────────────
   const risks = (analysis.stakeholder_concerns || []).map((concern, i) => {
     const { impact, probability } = assessRisk(concern);
-    return { id: `R-${String(i + 1).padStart(3, "0")}`, description: cap(concern), impact, probability, mitigation: deriveMitigation(concern) };
+    return {
+      id:          `R-${String(i + 1).padStart(3, "0")}`,
+      description: cap(concern),
+      impact,
+      probability,
+      mitigation:  deriveMitigation(concern),
+    };
   });
 
-  // ── Scope ────────────────────────────────────────────────────────────────
-  const inScope    = formalRequirements.map((r) => r.original);
-  const outOfScope = extractOutOfScope(analysis.key_requirements || [], analysis.stakeholder_concerns || []);
-
-  // ── Stakeholders ─────────────────────────────────────────────────────────
+  // ── 10. Stakeholders ──────────────────────────────────────────────────────
   const stakeholders = extractStakeholders(messages, requestInfo);
 
-  // ── Action items ─────────────────────────────────────────────────────────
+  // ── 11. Action items ──────────────────────────────────────────────────────
   const actionItems = (analysis.action_items || []).map((item, i) => ({
     id:          `A-${String(i + 1).padStart(3, "0")}`,
     description: cap(item),
     status:      "Open",
   }));
-
-  // ── Goals ────────────────────────────────────────────────────────────────
-  const goals = (analysis.key_requirements || [])
-    .slice(0, 4)
-    .map((r) => cleanToRequirement(r).replace(/^(the system shall|must|should|need to)\s*/i, ""))
-    .map(cap);
 
   return {
     meta: {
@@ -545,17 +926,65 @@ export async function generateBRD(analysis, requestInfo, messages = []) {
       source_messages: analysis.message_count,
     },
     sections: {
-      executive_summary: { number: "1", title: "Executive Summary", text: execSummary },
-      objective: { number: "2", title: "Business Objective & Goals", text: objective, goals },
-      scope:     { number: "3", title: "Scope", in_scope: inScope, out_of_scope: outOfScope },
-      stakeholders: { number: "4", title: "Stakeholder Analysis", list: stakeholders },
-      functional_requirements: { number: "5", title: "Functional Requirements", items: formalRequirements },
-      non_functional_requirements: { number: "6", title: "Non-Functional Requirements", items: nfrs },
-      business_rules: { number: "7", title: "Business Rules", items: businessRules },
-      integration_requirements: { number: "8", title: "Integration Requirements", items: integrationRequirements },
-      risk_register: { number: "9", title: "Risk Register", items: risks },
-      action_items:  { number: "10", title: "Action Items & Next Steps", items: actionItems },
-      brd_readiness: { number: "11", title: "BRD Readiness Assessment", ...analysis.brd_readiness },
+      executive_summary: {
+        number: "1",
+        title:  "Executive Summary",
+        text:   execSummary,
+      },
+      objective: {
+        number: "2",
+        title:  "Business Objective & Goals",
+        text:   objective,
+        goals,
+      },
+      scope: {
+        number:       "3",
+        title:        "Scope",
+        summary:      scope.summary,
+        in_scope:     scope.in_scope,
+        out_of_scope: scope.out_of_scope,
+        process_flow: scope.process_flow,
+      },
+      stakeholders: {
+        number: "4",
+        title:  "Stakeholder Analysis",
+        list:   stakeholders,
+      },
+      functional_requirements: {
+        number: "5",
+        title:  "Functional Requirements",
+        items:  formalRequirements,
+      },
+      non_functional_requirements: {
+        number: "6",
+        title:  "Non-Functional Requirements",
+        items:  nfrs,
+      },
+      business_rules: {
+        number: "7",
+        title:  "Business Rules",
+        items:  businessRules,
+      },
+      integration_requirements: {
+        number: "8",
+        title:  "Integration Requirements",
+        items:  integrationRequirements,
+      },
+      risk_register: {
+        number: "9",
+        title:  "Risk Register",
+        items:  risks,
+      },
+      action_items: {
+        number: "10",
+        title:  "Action Items & Next Steps",
+        items:  actionItems,
+      },
+      brd_readiness: {
+        number: "11",
+        title:  "BRD Readiness Assessment",
+        ...analysis.brd_readiness,
+      },
       appendix: {
         title:    "Appendix A: Key Conversation Excerpts",
         messages: messages.map((m) => ({ sender: m.sender_name, text: m.message_text, marked_at: m.marked_at })),

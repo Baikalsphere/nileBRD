@@ -7,6 +7,7 @@ import {
   BarChart3, BookOpen, Printer, RefreshCw,
   MessageSquare, ArrowUpRight, Loader2, Info,
   Eye, Download, ChevronLeft, X, Send, ArrowRight,
+  GitBranch, Shield, Database, ArrowRightCircle,
 } from "lucide-react";
 
 import { buildPdfHtml, openPdf, type BrdDoc } from "@/lib/brdPdf";
@@ -354,68 +355,196 @@ function BrdViewerModal({ doc, onClose, onUpdateStatus }: { doc: BrdDoc; onClose
             </div>
           </div>
 
-          {/* Section renderer helper */}
-          {[
-            { num: "1", title: s.executive_summary.title, icon: <BarChart3 className="size-4 text-indigo-500" />, content: <p className="text-sm leading-relaxed text-slate-700">{s.executive_summary.text}</p> },
-            { num: "2", title: s.objective.title, icon: <BookOpen className="size-4 text-violet-500" />, content: (
-              <div>
-                <p className="text-sm leading-relaxed text-slate-700 mb-3">{s.objective.text}</p>
-                <ul className="space-y-1.5">{s.objective.goals.map((g,i) => <li key={i} className="flex items-start gap-2"><CheckCircle2 className="size-3.5 mt-0.5 shrink-0 text-violet-400" /><span className="text-sm text-slate-700">{g}</span></li>)}</ul>
-              </div>
-            )},
-            { num: "3", title: s.scope.title, icon: <Info className="size-4 text-sky-500" />, content: (
-              <div className="grid sm:grid-cols-2 gap-4">
-                <div><p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-2">✓ In Scope</p><ul className="space-y-1">{s.scope.in_scope.map((it,i) => <li key={i} className="flex gap-2 items-start text-sm text-slate-700"><span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-400"/>{it}</li>)}</ul></div>
-                <div><p className="text-xs font-bold uppercase tracking-wider text-rose-600 mb-2">✗ Out of Scope</p><ul className="space-y-1">{s.scope.out_of_scope.map((it,i) => <li key={i} className="flex gap-2 items-start text-sm text-slate-600"><span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-rose-400"/>{it}</li>)}</ul></div>
-              </div>
-            )},
-          ].map(sec => (
-            <div key={sec.num} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center gap-2.5 mb-4">
-                <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">{sec.num}</div>
-                {sec.icon}
-                <h3 className="text-sm font-bold text-slate-800">{sec.title}</h3>
-                <div className="flex-1 h-px bg-slate-100" />
-              </div>
-              {sec.content}
+          {/* 1 — Executive Summary */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">1</div>
+              <BarChart3 className="size-4 text-indigo-500" />
+              <h3 className="text-sm font-bold text-slate-800">{s.executive_summary.title}</h3>
+              <div className="flex-1 h-px bg-slate-100" />
             </div>
-          ))}
+            <p className="text-sm leading-relaxed text-slate-700">{s.executive_summary.text}</p>
+          </div>
 
-          {/* Functional Requirements table */}
+          {/* 2 — Business Objective & Goals */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">2</div>
+              <BookOpen className="size-4 text-violet-500" />
+              <h3 className="text-sm font-bold text-slate-800">{s.objective.title}</h3>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            <p className="text-sm leading-relaxed text-slate-700 mb-3">{s.objective.text}</p>
+            <ul className="space-y-1.5">{s.objective.goals.map((g, i) => (
+              <li key={i} className="flex items-start gap-2"><CheckCircle2 className="size-3.5 mt-0.5 shrink-0 text-violet-400" /><span className="text-sm text-slate-700">{g}</span></li>
+            ))}</ul>
+          </div>
+
+          {/* 3 — Scope (summary + in/out + process flow) */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">3</div>
+              <Info className="size-4 text-sky-500" />
+              <h3 className="text-sm font-bold text-slate-800">{s.scope.title}</h3>
+              <div className="flex-1 h-px bg-slate-100" />
+            </div>
+            {(s.scope as any).summary && (
+              <p className="text-sm leading-relaxed text-slate-600 mb-4 rounded-xl bg-slate-50 border border-slate-100 px-4 py-3">{(s.scope as any).summary}</p>
+            )}
+            <div className="grid sm:grid-cols-2 gap-4 mb-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-2">✓ In Scope</p>
+                <ul className="space-y-1">{s.scope.in_scope.map((it, i) => (
+                  <li key={i} className="flex gap-2 items-start text-sm text-slate-700"><span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-emerald-400" />{it}</li>
+                ))}</ul>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-rose-600 mb-2">✗ Out of Scope</p>
+                <ul className="space-y-1">{s.scope.out_of_scope.map((it, i) => (
+                  <li key={i} className="flex gap-2 items-start text-sm text-slate-600"><span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-rose-400" />{it}</li>
+                ))}</ul>
+              </div>
+            </div>
+            {/* Process Flow */}
+            {(s.scope as any).process_flow?.length > 0 && (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-indigo-600 mb-3 flex items-center gap-1.5"><GitBranch className="size-3.5" /> End-to-End Business Process Flow</p>
+                <div className="space-y-2">
+                  {((s.scope as any).process_flow as Array<{step:number;actor:string;action:string;outcome:string}>).map((step) => (
+                    <div key={step.step} className="flex gap-3 items-start rounded-xl border border-indigo-100 bg-indigo-50/40 px-4 py-3">
+                      <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white mt-0.5">{step.step}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500 shrink-0">{step.actor}</span>
+                          <ArrowRightCircle className="size-3 text-indigo-300 shrink-0" />
+                          <span className="text-xs font-medium text-slate-800">{step.action}</span>
+                        </div>
+                        <p className="text-[10px] text-emerald-700 font-medium">→ {step.outcome}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 5 — Functional Requirements */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">5</div>
               <ClipboardList className="size-4 text-emerald-500" />
               <h3 className="text-sm font-bold text-slate-800">{s.functional_requirements.title}</h3>
-              <div className="flex-1 h-px bg-slate-100" />
+              <span className="ml-auto rounded-full bg-emerald-100 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{s.functional_requirements.items.length} requirements</span>
             </div>
             {s.functional_requirements.items.length ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b border-slate-100">
-                    <th className="py-2 pr-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 w-16">ID</th>
-                    <th className="py-2 pr-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Requirement</th>
-                    <th className="py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 w-28">Priority</th>
-                  </tr></thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {s.functional_requirements.items.map(fr => (
-                      <tr key={fr.id}>
-                        <td className="py-2.5 pr-3 font-mono text-xs font-bold text-indigo-600">{fr.id}</td>
-                        <td className="py-2.5 pr-3 text-slate-700 leading-relaxed">{fr.description}</td>
-                        <td className="py-2.5"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${PRIORITY_COLORS[fr.priority] ?? PRIORITY_COLORS["Must Have"]}`}>{fr.priority}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-3">
+                {s.functional_requirements.items.map(fr => (
+                  <div key={fr.id} className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-indigo-600">{fr.id}</span>
+                        {(fr as any).title && <span className="text-xs font-semibold text-slate-700">{(fr as any).title}</span>}
+                      </div>
+                      <span className={`shrink-0 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold ${PRIORITY_COLORS[fr.priority] ?? PRIORITY_COLORS["Must Have"]}`}>{fr.priority}</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed mb-2">{fr.description}</p>
+                    {(fr as any).rationale && (
+                      <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+                        <Info className="size-3 shrink-0 text-amber-500 mt-0.5" />
+                        <p className="text-[10px] text-amber-700 leading-relaxed"><span className="font-bold">Rationale: </span>{(fr as any).rationale}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             ) : <p className="text-xs text-slate-400 italic">No functional requirements extracted.</p>}
           </div>
 
-          {/* Risk Register */}
-          {s.risk_register.items.length > 0 && (
+          {/* 6 — Non-Functional Requirements */}
+          {s.non_functional_requirements?.items?.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">6</div>
+                <Shield className="size-4 text-rose-500" />
+                <h3 className="text-sm font-bold text-slate-800">{s.non_functional_requirements.title}</h3>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {s.non_functional_requirements.items.map(nfr => (
+                  <div key={nfr.id} className="rounded-xl border border-indigo-100 bg-indigo-50/30 p-3">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="font-mono text-[10px] font-bold text-indigo-400">{nfr.id}</span>
+                      <span className="text-xs font-bold text-slate-700">{nfr.category}</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">{nfr.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 7 — Business Rules */}
+          {(s as any).business_rules?.items?.length > 0 && (
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">7</div>
+                <Tag className="size-4 text-violet-500" />
+                <h3 className="text-sm font-bold text-slate-800">{(s as any).business_rules.title}</h3>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+              <div className="space-y-2">
+                {(s as any).business_rules.items.map((br: { id: string; description: string }) => (
+                  <div key={br.id} className="flex items-start gap-3 rounded-xl border border-violet-100 bg-violet-50/30 px-4 py-3">
+                    <span className="font-mono text-[10px] font-bold text-violet-600 shrink-0 mt-0.5 w-10">{br.id}</span>
+                    <p className="text-xs text-slate-700 leading-relaxed">{br.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 8 — Integration Requirements */}
+          {(s as any).integration_requirements?.items?.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">8</div>
+                <GitBranch className="size-4 text-blue-500" />
+                <h3 className="text-sm font-bold text-slate-800">{(s as any).integration_requirements.title}</h3>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+              <div className="space-y-3">
+                {(s as any).integration_requirements.items.map((int: {
+                  id: string; system: string; type: string; direction?: string;
+                  input?: string; output?: string; auth?: string; sla?: string; description: string;
+                }) => (
+                  <div key={int.id} className="rounded-xl border border-blue-100 bg-blue-50/30 p-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-[10px] font-bold text-blue-600">{int.id}</span>
+                        <span className="text-xs font-bold text-slate-800">{int.system}</span>
+                        <span className="rounded-full bg-blue-100 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold text-blue-700">{int.direction || int.type}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed mb-2">{int.description}</p>
+                    {(int.input || int.output || int.auth || int.sla) && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                        {int.input  && <div><p className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Input</p><p className="text-[10px] text-slate-600">{int.input}</p></div>}
+                        {int.output && <div><p className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Output</p><p className="text-[10px] text-slate-600">{int.output}</p></div>}
+                        {int.auth   && <div><p className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">Auth</p><p className="text-[10px] text-slate-600">{int.auth}</p></div>}
+                        {int.sla    && <div><p className="text-[9px] font-bold uppercase text-slate-400 mb-0.5">SLA</p><p className="text-[10px] text-emerald-700 font-semibold">{int.sla}</p></div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 9 — Risk Register */}
+          {s.risk_register.items.length > 0 && (
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2.5 mb-4">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">9</div>
                 <ShieldAlert className="size-4 text-rose-500" />
                 <h3 className="text-sm font-bold text-slate-800">{s.risk_register.title}</h3>
                 <div className="flex-1 h-px bg-slate-100" />
@@ -441,10 +570,10 @@ function BrdViewerModal({ doc, onClose, onUpdateStatus }: { doc: BrdDoc; onClose
             </div>
           )}
 
-          {/* Readiness */}
+          {/* 11 — Readiness */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-2.5 mb-4">
-              <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">9</div>
+              <div className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-[11px] font-bold text-white">11</div>
               <CheckCircle2 className="size-4 text-emerald-500" />
               <h3 className="text-sm font-bold text-slate-800">{s.brd_readiness.title}</h3>
               <div className="flex-1 h-px bg-slate-100" />
