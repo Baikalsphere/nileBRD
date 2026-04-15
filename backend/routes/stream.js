@@ -647,25 +647,25 @@ router.get("/it-dashboard-stats", authenticateToken, async (req, res) => {
       recentFrds,
       trend,
     ] = await Promise.all([
-      // BRDs submitted to IT
+      // BRDs available to IT = all Approved/Final BRDs
       pool.query(`
         SELECT
           COUNT(*)::int                                                    AS total_received,
           COUNT(fd.id)::int                                                AS with_frd,
           COUNT(*) FILTER (WHERE fd.id IS NULL)::int                       AS pending_frd
-        FROM brd_it_submissions s
-        JOIN brd_documents bd ON bd.id = s.brd_document_id
+        FROM brd_documents bd
         LEFT JOIN frd_documents fd ON fd.brd_document_id = bd.id
+        WHERE bd.status IN ('Approved', 'Final')
       `),
 
-      // FRD stats
+      // FRD stats — count distinct FRDs (avoid duplicates from TC join)
       pool.query(`
         SELECT
-          COUNT(*)::int                                             AS total,
-          COUNT(*) FILTER (WHERE status = 'Draft')::int            AS draft,
-          COUNT(*) FILTER (WHERE status = 'In Review')::int        AS in_review,
-          COUNT(*) FILTER (WHERE status = 'Approved')::int         AS approved,
-          COUNT(tc.id)::int                                        AS with_test_cases
+          COUNT(*)::int                                                          AS total,
+          COUNT(*) FILTER (WHERE fd.status = 'Draft')::int                      AS draft,
+          COUNT(*) FILTER (WHERE fd.status = 'In Review')::int                  AS in_review,
+          COUNT(*) FILTER (WHERE fd.status = 'Approved')::int                   AS approved,
+          COUNT(DISTINCT tc.frd_document_id)::int                               AS with_test_cases
         FROM frd_documents fd
         LEFT JOIN test_case_documents tc ON tc.frd_document_id = fd.id
       `),
@@ -681,19 +681,21 @@ router.get("/it-dashboard-stats", authenticateToken, async (req, res) => {
         FROM test_case_documents
       `),
 
-      // Recent BRDs received (last 5)
+      // Recent BRDs available to IT (last 5 Approved/Final)
       pool.query(`
-        SELECT bd.id, bd.doc_id, bd.content->'meta'->>'title' AS title,
+        SELECT bd.id, bd.doc_id,
+               bd.content->'meta'->>'title'    AS title,
                bd.content->'meta'->>'category' AS category,
                bd.content->'meta'->>'priority' AS priority,
-               s.submitted_at,
-               u.name AS submitted_by_name,
+               COALESCE(sub.submitted_at, bd.updated_at) AS submitted_at,
+               u.name  AS submitted_by_name,
                CASE WHEN fd.id IS NOT NULL THEN true ELSE false END AS has_frd
-        FROM brd_it_submissions s
-        JOIN brd_documents bd ON bd.id = s.brd_document_id
-        JOIN users u ON u.id = s.submitted_by
-        LEFT JOIN frd_documents fd ON fd.brd_document_id = bd.id
-        ORDER BY s.submitted_at DESC
+        FROM brd_documents bd
+        JOIN users u ON u.id = bd.generated_by
+        LEFT JOIN frd_documents fd  ON fd.brd_document_id = bd.id
+        LEFT JOIN brd_it_submissions sub ON sub.brd_document_id = bd.id
+        WHERE bd.status IN ('Approved', 'Final')
+        ORDER BY COALESCE(sub.submitted_at, bd.updated_at) DESC
         LIMIT 5
       `),
 
@@ -710,16 +712,18 @@ router.get("/it-dashboard-stats", authenticateToken, async (req, res) => {
         LIMIT 5
       `),
 
-      // 14-day activity trend (BRD submissions + FRD generations combined)
+      // 14-day activity trend — BRD approvals + FRD generations per day
       pool.query(`
         SELECT TO_CHAR(d.day, 'Mon DD') AS label,
-               COALESCE(sub.brd_count, 0)::int AS brds,
+               COALESCE(brd.brd_count, 0)::int AS brds,
                COALESCE(frd.frd_count, 0)::int AS frds
         FROM generate_series(NOW()::date - 13, NOW()::date, '1 day'::interval) AS d(day)
         LEFT JOIN (
-          SELECT submitted_at::date AS day, COUNT(*)::int AS brd_count
-          FROM brd_it_submissions GROUP BY submitted_at::date
-        ) sub ON sub.day = d.day
+          SELECT updated_at::date AS day, COUNT(*)::int AS brd_count
+          FROM brd_documents
+          WHERE status IN ('Approved', 'Final')
+          GROUP BY updated_at::date
+        ) brd ON brd.day = d.day
         LEFT JOIN (
           SELECT generated_at::date AS day, COUNT(*)::int AS frd_count
           FROM frd_documents GROUP BY generated_at::date

@@ -34,8 +34,8 @@ async function classifyWithGPT(messages, annotated) {
 - ACTION       : a next step, task, or action item to be done
 - GENERAL      : general discussion, greeting, or clarification with no direct BRD value
 
-Reply with ONLY a JSON array, one entry per message, in this exact format:
-[{"i":1,"label":"REQUIREMENT"},{"i":2,"label":"CONCERN"},...]
+Return a JSON object with a single key "classifications" whose value is an array, one entry per message:
+{"classifications":[{"i":1,"label":"REQUIREMENT"},{"i":2,"label":"CONCERN"},...]}
 
 Messages:
 ${numbered}`;
@@ -44,16 +44,22 @@ ${numbered}`;
     model:       process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o",
     messages:    [{ role: "user", content: prompt }],
     temperature: 0,
-    max_tokens:  messages.length * 20 + 50,
+    max_tokens:  messages.length * 20 + 100,
     response_format: { type: "json_object" },
   });
 
-  // GPT returns {"result":[...]} or just [...] — handle both
   let raw = response.choices[0].message.content?.trim() || "{}";
   let parsed;
   try {
     const obj = JSON.parse(raw);
-    parsed = Array.isArray(obj) ? obj : (obj.result ?? obj.classifications ?? Object.values(obj)[0] ?? []);
+    // Prefer the explicit "classifications" key; fall back to any top-level array value
+    if (Array.isArray(obj.classifications)) {
+      parsed = obj.classifications;
+    } else {
+      // Find first array value in the object
+      const arrayVal = Object.values(obj).find((v) => Array.isArray(v));
+      parsed = arrayVal ?? [];
+    }
   } catch { parsed = []; }
 
   const categorised = { requirements: [], concerns: [], actions: [], general: [] };
