@@ -27,6 +27,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3001
+ENV HOSTNAME=0.0.0.0
 
 # Non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
