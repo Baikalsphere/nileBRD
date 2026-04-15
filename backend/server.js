@@ -19,6 +19,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const allowedOrigins = [
   FRONTEND_URL,
   "http://localhost:3000",
+  /^https:\/\/[^.]+\.datasturdy\.com$/,
   /^https:\/\/nile-brd.*\.vercel\.app$/,
 ];
 
