@@ -15,30 +15,17 @@
  * 11. Full JSON BRD assembly     — numbered sections, IDs, version metadata
  */
 
-import { pipeline, env } from "@xenova/transformers";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import OpenAI from "openai";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-env.cacheDir = join(__dirname, "../../models");
-env.allowLocalModels = true;
+const GEN_MODEL = `azure/${process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o"}`;
 
-const GEN_MODEL = "Xenova/flan-t5-small";
-
-let _generator  = null;
-let _genPromise = null;
-
-async function getGenerator() {
-  if (_generator) return _generator;
-  if (_genPromise) return _genPromise;
-  _genPromise = (async () => {
-    console.log("[BRD Generator] Loading Flan-T5-small…");
-    _generator = await pipeline("text2text-generation", GEN_MODEL, { quantized: true });
-    console.log("[BRD Generator] Flan-T5 ready.");
-    return _generator;
-  })();
-  return _genPromise;
-}
+// Azure OpenAI client (shared singleton)
+const azureClient = new OpenAI({
+  apiKey:         process.env.AZURE_OPENAI_API_KEY,
+  baseURL:        `${(process.env.AZURE_OPENAI_ENDPOINT || "").replace(/\/$/, "")}/openai/deployments/${process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o"}`,
+  defaultQuery:   { "api-version": process.env.AZURE_OPENAI_API_VERSION || "2025-01-01-preview" },
+  defaultHeaders: { "api-key": process.env.AZURE_OPENAI_API_KEY },
+});
 
 // ─── MoSCoW ───────────────────────────────────────────────────────────────────
 const MUST_RE   = /\b(must|critical|mandatory|required|essential|shall|has to|need to|necessary)\b/i;
@@ -368,14 +355,21 @@ function cleanToRequirement(raw) {
   return cap(text);
 }
 
-// ─── Flan-T5 text generation ──────────────────────────────────────────────────
-async function generateText(prompt, maxTokens = 120) {
+// ─── Azure OpenAI text generation ────────────────────────────────────────────
+async function generateText(prompt, maxTokens = 300) {
   try {
-    const gen = await getGenerator();
-    const [result] = await gen(prompt, { max_new_tokens: maxTokens, num_beams: 4, early_stopping: true, no_repeat_ngram_size: 3 });
-    return result.generated_text?.trim() || "";
+    const response = await azureClient.chat.completions.create({
+      model:       process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o",
+      messages:    [
+        { role: "system", content: "You are a professional Business Analyst writing formal requirements documents. Be concise, precise, and use professional business language." },
+        { role: "user", content: prompt },
+      ],
+      temperature: 0.3,
+      max_tokens:  maxTokens,
+    });
+    return response.choices[0].message.content?.trim() || "";
   } catch (err) {
-    console.warn("[BRD Generator] Flan-T5 generation failed:", err.message);
+    console.warn("[BRD Generator] Azure OpenAI generation failed:", err.message);
     return "";
   }
 }
@@ -407,15 +401,14 @@ async function formaliseRequirement(text) {
   const cleaned = cleanToRequirement(text);
   if (/^the system shall/i.test(cleaned)) return cap(cleaned);
 
-  // Try Flan-T5 for a proper "The system shall…" rewrite
-  const prompt = `Rewrite as a concise formal business system requirement starting with "The system shall". Input: ${cleaned.slice(0, 180)}`;
-  const out    = await generateText(prompt, 80);
+  // Try GPT-4o for a proper "The system shall…" rewrite
+  const prompt = `Rewrite the following as a single concise formal business system requirement starting with exactly "The system shall". Return only the requirement sentence, nothing else.\n\nInput: ${cleaned.slice(0, 250)}`;
+  const out    = await generateText(prompt, 120);
   if (
     out.length > 20 &&
     /^The system shall/i.test(out) &&
-    out.length < 300 &&
-    !out.toLowerCase().startsWith(cleaned.slice(0, 20).toLowerCase()) &&
-    !/undefined|null|\bI\b|\bwe\b|\byou\b/i.test(out)
+    out.length < 400 &&
+    !/undefined|null/i.test(out)
   ) return cap(out);
 
   // Domain-aware phrase transformation

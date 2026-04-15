@@ -1,49 +1,80 @@
 /**
- * BRD Agent — Neural AI analysis engine using Transformers.js.
- *
- * Uses a real transformer neural network (DeBERTa-v3) for zero-shot classification,
- * augmented with domain-specific pattern extraction so financial/banking/API
- * requirements are never missed even if the neural model misclassifies them.
+ * BRD Agent — AI analysis engine using Azure OpenAI GPT-4o.
  *
  * Pipeline:
  *  1. Domain pattern extraction  — financial, API, compliance, integration keywords
- *  2. Zero-shot classification   — DeBERTa-v3-small for each message
- *  3. TF-IDF keyword extraction  — fast, domain-accurate
+ *  2. GPT-4o classification      — single API call classifies all messages at once
+ *  3. TF-IDF keyword extraction  — fast, domain-accurate (free, no API cost)
  *  4. BRD readiness assessment   — deterministic domain checks
  *  5. Executive summary          — synthesised from top-scored messages
  */
 
-import { pipeline, env } from "@xenova/transformers";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import OpenAI from "openai";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-env.cacheDir = join(__dirname, "../../models");
-env.allowLocalModels = true;
+const MODEL_ID = `azure/${process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o"}`;
 
-const MODEL_ID = "Xenova/nli-deberta-v3-small";
+// Azure OpenAI client
+const azureClient = new OpenAI({
+  apiKey:        process.env.AZURE_OPENAI_API_KEY,
+  baseURL:       `${(process.env.AZURE_OPENAI_ENDPOINT || "").replace(/\/$/, "")}/openai/deployments/${process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o"}`,
+  defaultQuery:  { "api-version": process.env.AZURE_OPENAI_API_VERSION || "2025-01-01-preview" },
+  defaultHeaders:{ "api-key": process.env.AZURE_OPENAI_API_KEY },
+});
 
-const CANDIDATE_LABELS = [
-  "business requirement or functional need",
-  "risk, concern, or problem",
-  "action item or next step",
-  "general discussion",
-];
+/**
+ * Classify all messages in one GPT-4o call.
+ * Returns { requirements, concerns, actions, general } — same shape as before.
+ */
+async function classifyWithGPT(messages, annotated) {
+  const numbered = messages.map((m, i) => `[${i + 1}] ${m.message_text}`).join("\n");
 
-// Singleton model loader
-let _classifier = null;
-let _loadPromise = null;
+  const prompt = `You are a Business Analyst assistant. Classify each numbered message below into exactly one of these categories:
+- REQUIREMENT  : a functional need, system capability, or business requirement
+- CONCERN      : a risk, problem, issue, or stakeholder concern
+- ACTION       : a next step, task, or action item to be done
+- GENERAL      : general discussion, greeting, or clarification with no direct BRD value
 
-async function getClassifier() {
-  if (_classifier) return _classifier;
-  if (_loadPromise) return _loadPromise;
-  _loadPromise = (async () => {
-    console.log("[BRD Agent] Loading neural model (first run ~30s)…");
-    _classifier = await pipeline("zero-shot-classification", MODEL_ID, { quantized: true });
-    console.log("[BRD Agent] Neural model ready.");
-    return _classifier;
-  })();
-  return _loadPromise;
+Reply with ONLY a JSON array, one entry per message, in this exact format:
+[{"i":1,"label":"REQUIREMENT"},{"i":2,"label":"CONCERN"},...]
+
+Messages:
+${numbered}`;
+
+  const response = await azureClient.chat.completions.create({
+    model:       process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o",
+    messages:    [{ role: "user", content: prompt }],
+    temperature: 0,
+    max_tokens:  messages.length * 20 + 50,
+    response_format: { type: "json_object" },
+  });
+
+  // GPT returns {"result":[...]} or just [...] — handle both
+  let raw = response.choices[0].message.content?.trim() || "{}";
+  let parsed;
+  try {
+    const obj = JSON.parse(raw);
+    parsed = Array.isArray(obj) ? obj : (obj.result ?? obj.classifications ?? Object.values(obj)[0] ?? []);
+  } catch { parsed = []; }
+
+  const categorised = { requirements: [], concerns: [], actions: [], general: [] };
+
+  parsed.forEach(({ i, label }) => {
+    const idx = i - 1;
+    if (idx < 0 || idx >= messages.length) return;
+    const msg   = annotated[idx];
+    const entry = { text: msg.message_text, sender: msg.sender_name, confidence: 0.9, domains: msg.domains };
+
+    // Domain override — force requirement for finance/API/compliance messages
+    const hasForcedDomain = [...msg.domains].some((d) => FORCE_REQUIREMENT_DOMAINS.has(d));
+    const effectiveLabel  = hasForcedDomain ? "REQUIREMENT" : (label || "GENERAL");
+
+    if      (effectiveLabel === "REQUIREMENT") categorised.requirements.push(entry);
+    else if (effectiveLabel === "CONCERN")     categorised.concerns.push(entry);
+    else if (effectiveLabel === "ACTION")      categorised.actions.push(entry);
+    else                                       categorised.general.push(entry);
+  });
+
+  return categorised;
 }
 
 // ─── Stopwords ────────────────────────────────────────────────────────────────
@@ -275,42 +306,15 @@ export async function analyseKeyPoints(messages, requestInfo) {
   const tfidf    = computeTfIdf(messages.map((m) => m.message_text));
   const keywords = topKeywords(tfidf, 12);
 
-  // ── 3. Neural zero-shot classification ───────────────────────────────────
+  // ── 3. GPT-4o classification (single API call for all messages) ─────────────
   let categorised = { requirements: [], concerns: [], actions: [], general: [] };
 
   try {
-    const classifier = await getClassifier();
-    const results = await Promise.all(
-      messages.map((m) => classifier(m.message_text, CANDIDATE_LABELS, { multi_label: false }))
-    );
-
-    results.forEach((result, i) => {
-      const msg       = annotated[i];
-      const topLabel  = result.labels[0];
-      const confidence = result.scores[0];
-      const entry     = { text: msg.message_text, sender: msg.sender_name, confidence, domains: msg.domains };
-
-      // Force requirement classification for domain-specific messages
-      const hasForcedDomain = [...msg.domains].some((d) => FORCE_REQUIREMENT_DOMAINS.has(d));
-
-      if (hasForcedDomain || topLabel.includes("requirement") || topLabel.includes("functional")) {
-        categorised.requirements.push(entry);
-      } else if (topLabel.includes("risk") || topLabel.includes("concern") || topLabel.includes("problem")) {
-        categorised.concerns.push(entry);
-      } else if (topLabel.includes("action") || topLabel.includes("next step")) {
-        categorised.actions.push(entry);
-      } else {
-        categorised.general.push(entry);
-      }
-    });
-
-    for (const key of Object.keys(categorised)) {
-      categorised[key].sort((a, b) => b.confidence - a.confidence);
-    }
-
-    console.log(`[BRD Agent] Classified ${messages.length} messages (neural + domain override).`);
+    categorised = await classifyWithGPT(messages, annotated);
+    console.log(`[BRD Agent] Classified ${messages.length} messages via GPT-4o.`);
   } catch (err) {
-    console.warn("[BRD Agent] Neural classification failed, using pattern fallback:", err.message);
+    console.warn("[BRD Agent] GPT-4o classification failed, using pattern fallback:", err.message);
+    // Pattern-based fallback so the system keeps working if the API is down
     annotated.forEach((m) => {
       const entry = { text: m.message_text, sender: m.sender_name, confidence: 0.5, domains: m.domains };
       const hasForcedDomain = [...m.domains].some((d) => FORCE_REQUIREMENT_DOMAINS.has(d));
