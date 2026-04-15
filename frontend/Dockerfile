@@ -26,6 +26,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV PORT=3001
 
 # Non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
@@ -38,6 +39,6 @@ COPY --from=builder /app/.next/static  ./.next/static
 RUN chown -R appuser:appgroup /app
 USER appuser
 
-EXPOSE 3000
+EXPOSE 3001
 
 CMD ["node", "server.js"]

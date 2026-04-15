@@ -19,7 +19,7 @@ services:
       # Runtime var for server-side Next.js API routes (container→container)
       BACKEND_URL: http://backend:5001
     ports:
-      - "3000:3000"
+      - "3001:3001"
     depends_on:
       - backend
     networks:
