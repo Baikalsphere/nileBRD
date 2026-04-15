@@ -819,7 +819,7 @@ async function generateExecutiveSummary(analysis, requestInfo, integrationSignal
   const priority = requestInfo.priority || "Medium";
   const keywords = (analysis.keywords || []).slice(0, 5).join(", ");
 
-  // Try Flan-T5 first
+  // Try GPT-4o first
   const prompt =
     `Write a professional 3-sentence executive summary for a Business Requirements Document.\n` +
     `Project: "${title}". Domain: ${category}. Priority: ${priority}.\n` +
@@ -1059,7 +1059,7 @@ export async function generateBRD(analysis, requestInfo, messages = []) {
       priority:        requestInfo.priority || "Medium",
       generated_at:    now.toISOString(),
       effective_date:  now.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
-      ai_models:       ["Xenova/nli-deberta-v3-small (zero-shot classification)", "Xenova/flan-t5-small (text generation)"],
+      ai_models:       [`Azure OpenAI ${process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o"} (classification + generation)`],
       source_messages: analysis.message_count,
     },
     sections: {
