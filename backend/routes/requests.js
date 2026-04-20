@@ -261,8 +261,13 @@ router.post("/", authenticateToken, upload.array("attachments", 10), async (req,
       deleteFile(key).catch(() => {});
     }
 
-    console.error("Submit request error:", error);
-    res.status(500).json({ message: "Error submitting request" });
+    const isStorageError = error.message?.includes("Storage upload failed") || error.message?.includes("storage");
+    console.error("Submit request error:", error.message ?? error);
+    res.status(500).json({
+      message: isStorageError
+        ? "File upload failed — check storage configuration"
+        : "Error submitting request",
+    });
   } finally {
     client.release();
   }

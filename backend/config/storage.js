@@ -2,6 +2,10 @@ import { createClient } from "@supabase/supabase-js";
 
 // Uses the service_role key (not anon key) so it can bypass RLS and access private buckets.
 // Bucket should be set to PRIVATE in Supabase dashboard — access is controlled via signed URLs.
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+  console.error("[storage] SUPABASE_URL or SUPABASE_SERVICE_KEY env var is missing — file uploads will fail.");
+}
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
