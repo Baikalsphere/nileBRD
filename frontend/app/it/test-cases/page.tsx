@@ -16,7 +16,7 @@ const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5001";
 interface TcListItem {
   id: number; doc_id: string; frd_doc_id: string; brd_doc_id: string;
   title: string; status: string; total_cases: number;
-  summary: { system: number; integration: number; uat: number; critical: number; high: number; medium: number; low: number };
+  summary: { system: number; integration: number; uat: number; performance: number; security: number; critical: number; high: number; medium: number; low: number };
   request_title: string; req_number: string; generated_at: string; generated_by_name: string;
   sit_released: boolean; sit_pass_rate: number | null; sit_released_at: string | null;
 }
@@ -206,7 +206,7 @@ function SITTab({ doc, onReleased }: { doc: TcListItem; onReleased: () => void }
           )}
           <button onClick={() => downloadTestCasesAsPDF(
             { summary: doc.summary, doc_id: doc.doc_id, frd_doc_id: doc.frd_doc_id, brd_doc_id: doc.brd_doc_id, title: doc.request_title, version: "1.0", request_number: doc.req_number, total_cases: doc.total_cases },
-            sit.sit_cases
+            sit.sit_cases.map(tc => ({ ...tc, frd_ref: tc.id, status: sit.results[tc.id]?.status ?? "Pending" }))
           )} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-sm rounded-xl hover:bg-slate-50">
             <FileDown className="w-3.5 h-3.5" /> Export PDF
           </button>
