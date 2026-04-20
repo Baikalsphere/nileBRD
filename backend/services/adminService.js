@@ -46,8 +46,11 @@ export async function createAdminUser(email, password, role, name = null) {
 export async function setItManager(userId) {
   // Clear existing IT manager first
   await pool.query("UPDATE users SET is_it_manager = FALSE WHERE is_it_manager = TRUE");
+  // Accept it_member or it — upgrade role to 'it' and set manager flag
   const result = await pool.query(
-    "UPDATE users SET is_it_manager = TRUE WHERE id = $1 AND role = 'it' RETURNING id, email, role, name, is_it_manager, created_at",
+    `UPDATE users SET role = 'it', is_it_manager = TRUE
+     WHERE id = $1 AND role IN ('it', 'it_member')
+     RETURNING id, email, role, name, is_it_manager, created_at`,
     [userId]
   );
   if (!result.rows.length) throw new Error("User not found or not an IT user");

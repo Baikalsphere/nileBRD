@@ -30,7 +30,7 @@ import { ButtonShadcn } from "@/components/ui/ButtonShadcn";
 import { InputShadcn } from "@/components/ui/InputShadcn";
 import { Label } from "@/components/ui/Label";
 
-type UserRole = "stakeholder" | "ba" | "it";
+type UserRole = "stakeholder" | "ba" | "it" | "it_member";
 type Tab = "users" | "create" | "audit";
 
 interface User {
@@ -64,12 +64,21 @@ const roleConfig: Record<UserRole, { label: string; color: string; bg: string; i
     icon: <Briefcase className="size-3" />,
   },
   it: {
-    label: "IT Professional",
+    label: "IT Manager",
     color: "text-emerald-300",
     bg: "bg-emerald-500/15 border-emerald-500/30",
+    icon: <Crown className="size-3" />,
+  },
+  it_member: {
+    label: "IT Professional",
+    color: "text-cyan-300",
+    bg: "bg-cyan-500/15 border-cyan-500/30",
     icon: <Code2 className="size-3" />,
   },
 };
+
+// Roles available in the Create User form (admins never directly create an 'it' manager)
+const CREATE_ROLES: UserRole[] = ["stakeholder", "ba", "it_member"];
 
 function getInitials(name: string, email: string) {
   if (name.trim()) {
@@ -388,7 +397,8 @@ export default function AdminPanel() {
     total: users.length,
     stakeholder: users.filter((u) => u.role === "stakeholder").length,
     ba: users.filter((u) => u.role === "ba").length,
-    it: users.filter((u) => u.role === "it").length,
+    it_member: users.filter((u) => u.role === "it_member").length,
+    it_manager: users.filter((u) => u.role === "it").length,
   }), [users]);
 
   if (!isInitialized) {
@@ -511,11 +521,12 @@ export default function AdminPanel() {
         </div>
 
         {/* Stats */}
-        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <StatCard label="Total Users" value={stats.total} icon={<Users className="size-5 text-white" />} color="bg-gradient-to-br from-slate-600 to-slate-700" />
           <StatCard label="Stakeholders" value={stats.stakeholder} icon={<User className="size-5 text-white" />} color="bg-gradient-to-br from-blue-600 to-blue-700" />
           <StatCard label="Business Analysts" value={stats.ba} icon={<Briefcase className="size-5 text-white" />} color="bg-gradient-to-br from-purple-600 to-purple-700" />
-          <StatCard label="IT Professionals" value={stats.it} icon={<Code2 className="size-5 text-white" />} color="bg-gradient-to-br from-emerald-600 to-emerald-700" />
+          <StatCard label="IT Professionals" value={stats.it_member} icon={<Code2 className="size-5 text-white" />} color="bg-gradient-to-br from-cyan-600 to-cyan-700" />
+          <StatCard label="IT Managers" value={stats.it_manager} icon={<Crown className="size-5 text-white" />} color="bg-gradient-to-br from-emerald-600 to-emerald-700" />
         </div>
 
         {/* Success toast */}
@@ -565,17 +576,17 @@ export default function AdminPanel() {
               </div>
               <div className="flex items-center gap-1">
                 <Filter className="size-3.5 text-slate-500" />
-                {(["all", "stakeholder", "ba", "it"] as const).map((r) => (
+                {(["all", "stakeholder", "ba", "it_member", "it"] as const).map((r) => (
                   <button
                     key={r}
-                    onClick={() => setRoleFilter(r)}
+                    onClick={() => setRoleFilter(r as UserRole | "all")}
                     className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${
                       roleFilter === r
                         ? "bg-red-600 text-white"
                         : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
                     }`}
                   >
-                    {r === "all" ? "All" : r === "ba" ? "BA" : r === "it" ? "IT" : "Stakeholder"}
+                    {r === "all" ? "All" : r === "ba" ? "BA" : r === "it_member" ? "IT Pro" : r === "it" ? "IT Mgr" : "Stakeholder"}
                   </button>
                 ))}
               </div>
@@ -643,8 +654,8 @@ export default function AdminPanel() {
                           {/* Actions */}
                           <td className="px-5 py-3.5">
                             <div className="flex items-center gap-2">
-                              {/* Set as IT Manager — only for IT role users */}
-                              {user.role === "it" && !user.is_it_manager && (
+                              {/* Set as IT Manager — for IT Professional or non-manager IT users */}
+                              {(user.role === "it_member" || (user.role === "it" && !user.is_it_manager)) && (
                                 <button
                                   onClick={() => setAsItManager(user.id)}
                                   disabled={settingManagerId === user.id}
@@ -753,24 +764,28 @@ export default function AdminPanel() {
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold uppercase tracking-wide text-slate-400">Portal Role *</Label>
                   <div className="grid grid-cols-3 gap-2">
-                    {(Object.entries(roleConfig) as [UserRole, typeof roleConfig[UserRole]][]).map(([key, cfg]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => setSelectedRole(key)}
-                        className={`flex flex-col items-center gap-1.5 rounded-xl border py-3 text-center transition-all duration-200 ${
-                          selectedRole === key
-                            ? `${cfg.bg} border-opacity-60`
-                            : "border-slate-600 bg-slate-700/30 hover:border-slate-500"
-                        }`}
-                      >
-                        <span className={selectedRole === key ? cfg.color : "text-slate-500"}>{cfg.icon}</span>
-                        <span className={`text-xs font-semibold ${selectedRole === key ? cfg.color : "text-slate-400"}`}>
-                          {key === "ba" ? "BA" : key === "it" ? "IT" : "Stakeholder"}
-                        </span>
-                      </button>
-                    ))}
+                    {CREATE_ROLES.map((key) => {
+                      const cfg = roleConfig[key];
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => setSelectedRole(key)}
+                          className={`flex flex-col items-center gap-1.5 rounded-xl border py-3 text-center transition-all duration-200 ${
+                            selectedRole === key
+                              ? `${cfg.bg} border-opacity-60`
+                              : "border-slate-600 bg-slate-700/30 hover:border-slate-500"
+                          }`}
+                        >
+                          <span className={selectedRole === key ? cfg.color : "text-slate-500"}>{cfg.icon}</span>
+                          <span className={`text-xs font-semibold ${selectedRole === key ? cfg.color : "text-slate-400"}`}>
+                            {cfg.label}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
+                  <p className="text-[11px] text-slate-500 mt-1">IT Managers are promoted from IT Professionals via the Users tab.</p>
                 </div>
 
                 {createError && (

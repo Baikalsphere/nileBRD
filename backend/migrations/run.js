@@ -15,6 +15,10 @@ CREATE TABLE IF NOT EXISTS users (
 -- Add name column to existing users table if it doesn't exist
 ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(255);
 
+-- Expand role check constraint to include it_member
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('stakeholder', 'ba', 'it', 'it_member'));
+
 -- Create index on email for faster lookups
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
@@ -210,6 +214,124 @@ CREATE TABLE IF NOT EXISTS test_case_documents (
 
 CREATE INDEX IF NOT EXISTS idx_tc_docs_frd ON test_case_documents(frd_document_id);
 CREATE INDEX IF NOT EXISTS idx_tc_docs_request ON test_case_documents(request_id);
+
+-- ─── POST-TEST-CASE WORKFLOW TABLES ─────────────────────────────────────────
+
+-- SIT execution results (one row per test-case per tc_document)
+CREATE TABLE IF NOT EXISTS sit_test_results (
+  id              SERIAL PRIMARY KEY,
+  tc_document_id  INTEGER REFERENCES test_case_documents(id) ON DELETE CASCADE,
+  test_case_id    VARCHAR(50) NOT NULL,
+  status          VARCHAR(20) DEFAULT 'Pending'
+                  CHECK (status IN ('Pending','In Progress','Pass','Fail','Blocked')),
+  remarks         TEXT,
+  updated_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tc_document_id, test_case_id)
+);
+CREATE INDEX IF NOT EXISTS idx_sit_results_doc ON sit_test_results(tc_document_id);
+
+-- SIT release record (created when IT releases for UAT at ≥90% pass rate)
+CREATE TABLE IF NOT EXISTS sit_releases (
+  id              SERIAL PRIMARY KEY,
+  tc_document_id  INTEGER REFERENCES test_case_documents(id) ON DELETE CASCADE UNIQUE,
+  pass_rate       DECIMAL(5,2) NOT NULL,
+  released_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  released_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- UAT assignments (one row per UAT case per stakeholder — BA creates these)
+CREATE TABLE IF NOT EXISTS uat_assignments (
+  id              SERIAL PRIMARY KEY,
+  tc_document_id  INTEGER REFERENCES test_case_documents(id) ON DELETE CASCADE,
+  test_case_id    VARCHAR(50) NOT NULL,
+  stakeholder_id  INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  assigned_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  status          VARCHAR(20) DEFAULT 'Pending'
+                  CHECK (status IN ('Pending','In Progress','Pass','Fail')),
+  test_mode       VARCHAR(20) DEFAULT 'manual'
+                  CHECK (test_mode IN ('simulation','manual')),
+  remarks         TEXT,
+  manual_notes    TEXT,
+  assigned_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tc_document_id, test_case_id, stakeholder_id)
+);
+CREATE INDEX IF NOT EXISTS idx_uat_assignments_doc  ON uat_assignments(tc_document_id);
+CREATE INDEX IF NOT EXISTS idx_uat_assignments_user ON uat_assignments(stakeholder_id);
+
+-- UAT threshold config per tc_document (BA sets this)
+CREATE TABLE IF NOT EXISTS uat_config (
+  tc_document_id  INTEGER PRIMARY KEY REFERENCES test_case_documents(id) ON DELETE CASCADE,
+  pass_threshold  INTEGER DEFAULT 80,
+  configured_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Approval requests (submitted after UAT threshold met, IT Manager approves)
+CREATE TABLE IF NOT EXISTS approval_requests (
+  id              SERIAL PRIMARY KEY,
+  tc_document_id  INTEGER REFERENCES test_case_documents(id) ON DELETE CASCADE UNIQUE,
+  request_id      INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  pass_rate       DECIMAL(5,2),
+  status          VARCHAR(20) DEFAULT 'Pending'
+                  CHECK (status IN ('Pending','Approved','Rejected')),
+  submitted_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  submitted_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  reviewed_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  reviewed_at     TIMESTAMP,
+  comment         TEXT
+);
+
+-- Deployments (SIT → UAT → Production, created by IT after approval)
+CREATE TABLE IF NOT EXISTS deployments (
+  id              SERIAL PRIMARY KEY,
+  tc_document_id  INTEGER REFERENCES test_case_documents(id) ON DELETE CASCADE,
+  request_id      INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  environment     VARCHAR(20) NOT NULL CHECK (environment IN ('SIT','UAT','Production')),
+  deployment_type VARCHAR(20) DEFAULT 'Full' CHECK (deployment_type IN ('Full','Partial')),
+  status          VARCHAR(20) DEFAULT 'Pending'
+                  CHECK (status IN ('Pending','In Progress','Deployed','Partial','Failed')),
+  notes           TEXT,
+  deployed_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  deployed_at     TIMESTAMP,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tc_document_id, environment)
+);
+CREATE INDEX IF NOT EXISTS idx_deployments_request ON deployments(request_id);
+
+-- Production defects (reported by stakeholders/BA post-deployment)
+CREATE TABLE IF NOT EXISTS production_defects (
+  id              SERIAL PRIMARY KEY,
+  request_id      INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  deployment_id   INTEGER REFERENCES deployments(id) ON DELETE SET NULL,
+  title           VARCHAR(255) NOT NULL,
+  description     TEXT,
+  severity        VARCHAR(20) DEFAULT 'Medium'
+                  CHECK (severity IN ('Critical','High','Medium','Low')),
+  status          VARCHAR(30) DEFAULT 'Open'
+                  CHECK (status IN ('Open','Acknowledged','In Progress','Resolved','Closed')),
+  reported_by     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  assigned_to     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  remarks         TEXT,
+  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_defects_request ON production_defects(request_id);
+
+-- Production release status (created when Production deployment is done)
+CREATE TABLE IF NOT EXISTS production_releases (
+  id                    SERIAL PRIMARY KEY,
+  request_id            INTEGER REFERENCES requests(id) ON DELETE CASCADE UNIQUE,
+  tc_document_id        INTEGER REFERENCES test_case_documents(id) ON DELETE CASCADE,
+  deployment_id         INTEGER REFERENCES deployments(id) ON DELETE SET NULL,
+  status                VARCHAR(50) DEFAULT 'Under Observation'
+                        CHECK (status IN ('Under Observation','Completed')),
+  marked_completed_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  marked_completed_at   TIMESTAMP,
+  created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 export async function runMigrations() {

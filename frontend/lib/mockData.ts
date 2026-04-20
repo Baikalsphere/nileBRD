@@ -18,8 +18,17 @@ export const baNav: NavItem[] = [
   { label: "Dashboard", href: "/ba/dashboard", icon: "layout-dashboard" },
   { label: "Assigned Requests", href: "/ba/assigned-problems", icon: "briefcase-business" },
   { label: "BRD Management", href: "/ba/brd-management", icon: "file-text" },
+  { label: "UAT Oversight", href: "/ba/uat-oversight", icon: "clipboard-check" },
   { label: "User Stories", href: "/ba/user-stories", icon: "book-check" },
   { label: "AI Generator Tools", href: "/ba/ai-tools", icon: "bot" },
+];
+
+export const itMemberNav: NavItem[] = [
+  { label: "Dashboard", href: "/it-member/dashboard", icon: "layout-dashboard" },
+  { label: "Discussions", href: "/it-member/discussions", icon: "message-square" },
+  { label: "SIT Testing", href: "/it-member/sit-testing", icon: "flask-conical" },
+  { label: "Development Tracking", href: "/it-member/development-tracking", icon: "git-branch" },
+  { label: "Deployment", href: "/it-member/deployment", icon: "rocket" },
 ];
 
 export const itNav: NavItem[] = [
@@ -28,9 +37,7 @@ export const itNav: NavItem[] = [
   { label: "Approved BRDs", href: "/it/approved-brds", icon: "file-check-2" },
   { label: "FRD Management", href: "/it/frd-management", icon: "folder-open" },
   { label: "Test Cases", href: "/it/test-cases", icon: "test-tube" },
-  { label: "Bug Tracking", href: "/it/bug-tracking", icon: "bug" },
   { label: "Deployment", href: "/it/deployment", icon: "rocket" },
-  { label: "Monitoring", href: "/it/monitoring", icon: "activity" },
 ];
 
 export const stakeholderSummary = [

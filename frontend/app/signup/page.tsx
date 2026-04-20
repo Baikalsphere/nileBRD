@@ -4,9 +4,9 @@ import { useState } from "react";
 import { ButtonShadcn } from "@/components/ui/ButtonShadcn";
 import { InputShadcn } from "@/components/ui/InputShadcn";
 import { Label } from "@/components/ui/Label";
-import { Sparkles, Users, Briefcase, Cpu, ArrowRight, CheckCircle2 } from "lucide-react";
+import { Sparkles, Users, Briefcase, Cpu, MonitorCheck, ArrowRight, CheckCircle2 } from "lucide-react";
 
-type UserRole = "stakeholder" | "ba" | "it" | null;
+type UserRole = "stakeholder" | "ba" | "it" | "it_member" | null;
 
 const roleConfig = [
   { 
@@ -25,13 +25,21 @@ const roleConfig = [
     color: "from-purple-500 to-purple-600",
     benefits: ["Create specifications", "Manage requirements", "Review documents"]
   },
-  { 
-    id: "it", 
-    title: "IT Professional", 
-    description: "Track development and deployments",
+  {
+    id: "it",
+    title: "IT Manager",
+    description: "Manage BRDs, FRDs, test cases and the full IT pipeline",
     icon: Cpu,
     color: "from-green-500 to-green-600",
-    benefits: ["Track development", "Manage deployments", "Monitor systems"]
+    benefits: ["Receive approved BRDs", "Generate FRDs & test cases", "Oversee deployments"]
+  },
+  {
+    id: "it_member",
+    title: "IT Team Member",
+    description: "Execute SIT/UAT testing, track development and deployments",
+    icon: MonitorCheck,
+    color: "from-cyan-500 to-cyan-600",
+    benefits: ["Run SIT & UAT tests", "Track development tasks", "Update deployment status"]
   },
 ];
 

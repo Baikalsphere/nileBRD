@@ -930,10 +930,10 @@ router.post("/frd-documents/:frdId/generate-test-cases", authenticateToken, asyn
   }
 });
 
-// GET /api/stream/test-case-documents — list all test case documents (IT only)
+// GET /api/stream/test-case-documents — list all test case documents (IT / it_member)
 router.get("/test-case-documents", authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    if (!["it", "it_member"].includes(req.user.role)) return res.status(403).json({ message: "IT role required" });
 
     const { rows } = await pool.query(
       `SELECT tc.id, tc.doc_id, tc.version, tc.status, tc.generated_at, tc.updated_at,
@@ -944,11 +944,15 @@ router.get("/test-case-documents", authenticateToken, async (req, res) => {
               tc.content->'meta'->>'brd_doc_id'                         AS brd_doc_id,
               r.id AS request_id, r.title AS request_title, r.req_number,
               fd.doc_id AS frd_doc_id, fd.id AS frd_id,
-              u.name AS generated_by_name, u.email AS generated_by_email
+              u.name AS generated_by_name, u.email AS generated_by_email,
+              sr.pass_rate   AS sit_pass_rate,
+              sr.released_at AS sit_released_at,
+              CASE WHEN sr.id IS NOT NULL THEN true ELSE false END AS sit_released
        FROM test_case_documents tc
        JOIN frd_documents fd ON fd.id = tc.frd_document_id
        JOIN requests      r  ON r.id  = tc.request_id
        JOIN users         u  ON u.id  = tc.generated_by
+       LEFT JOIN sit_releases sr ON sr.tc_document_id = tc.id
        ORDER BY tc.updated_at DESC`
     );
     res.json(rows);
@@ -958,10 +962,10 @@ router.get("/test-case-documents", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/stream/test-case-documents/:tcId — get full test case document
+// GET /api/stream/test-case-documents/:tcId — get full test case document (IT / it_member)
 router.get("/test-case-documents/:tcId", authenticateToken, async (req, res) => {
   try {
-    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    if (!["it", "it_member"].includes(req.user.role)) return res.status(403).json({ message: "IT role required" });
     const { rows } = await pool.query(
       `SELECT tc.*, r.req_number, r.title AS request_title
        FROM test_case_documents tc JOIN requests r ON r.id = tc.request_id

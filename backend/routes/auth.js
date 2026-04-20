@@ -14,7 +14,7 @@ router.post("/signup", async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    if (!["stakeholder", "ba", "it"].includes(role)) {
+    if (!["stakeholder", "ba", "it", "it_member"].includes(role)) {
       return res.status(400).json({ message: "Invalid role" });
     }
 

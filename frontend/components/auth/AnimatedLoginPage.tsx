@@ -315,6 +315,7 @@ function LoginPage() {
           stakeholder: "/stakeholder",
           ba: "/ba",
           it: "/it",
+          it_member: "/it-member",
         };
 
         const portal = rolePortals[data.user.role] || "/stakeholder";

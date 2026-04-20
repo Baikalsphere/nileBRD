@@ -8,6 +8,8 @@ import adminRoutes from "./routes/admin.js";
 import requestRoutes from "./routes/requests.js";
 import discussionRoutes from "./routes/discussions.js";
 import streamRoutes from "./routes/stream.js";
+import testingRoutes from "./routes/testing.js";
+import deploymentRoutes from "./routes/deployments.js";
 import pool from "./config/db.js";
 import { initChat } from "./socket/chat.js";
 import { runMigrations } from "./migrations/run.js";
@@ -39,6 +41,8 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/requests", requestRoutes);
 app.use("/api/discussions", discussionRoutes);
 app.use("/api/stream", streamRoutes);
+app.use("/api/testing", testingRoutes);
+app.use("/api/deployments", deploymentRoutes);
 
 // Health check
 app.get("/health", async (req, res) => {

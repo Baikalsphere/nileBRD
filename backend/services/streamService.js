@@ -61,3 +61,27 @@ export async function sendMessageToChannel(requestId, text, attachments = [], se
     user_id: String(senderId),
   });
 }
+
+const SYSTEM_USER_ID = "bprm-system";
+
+async function ensureSystemUser() {
+  await serverClient.upsertUser({
+    id: SYSTEM_USER_ID,
+    name: "BPRM System",
+    role: "user",
+  });
+}
+
+/**
+ * Post an automated activity update to the request's discussion channel.
+ * Silently swallows errors so it never breaks the calling endpoint.
+ */
+export async function postSystemActivity(requestId, text) {
+  try {
+    await ensureSystemUser();
+    const channel = serverClient.channel("messaging", `request-${requestId}`);
+    await channel.sendMessage({ text, user_id: SYSTEM_USER_ID });
+  } catch (err) {
+    console.error("[postSystemActivity] Failed to post to channel:", err?.message ?? err);
+  }
+}
