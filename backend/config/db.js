@@ -2,9 +2,12 @@ import "dotenv/config.js";
 import pkg from "pg";
 const { Pool } = pkg;
 
+const isLocal = (process.env.DATABASE_URL ?? "").includes("localhost") ||
+                (process.env.DATABASE_URL ?? "").includes("@db:");
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: isLocal ? false : { rejectUnauthorized: false },
 });
 
 pool.on("error", (err) => {
