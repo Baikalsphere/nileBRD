@@ -14,7 +14,7 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_BACKEND_URL: https://brd.datasturdy.com
+        NEXT_PUBLIC_BACKEND_URL: http://localhost:5001
     environment:
       # Runtime var for server-side Next.js API routes (container→container)
       BACKEND_URL: http://backend:5001

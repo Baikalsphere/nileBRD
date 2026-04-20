@@ -15,7 +15,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # NEXT_PUBLIC_ vars must be available at build time
-ARG NEXT_PUBLIC_BACKEND_URL=https://brd.datasturdy.com
+ARG NEXT_PUBLIC_BACKEND_URL=http://localhost:5001
 ENV NEXT_PUBLIC_BACKEND_URL=$NEXT_PUBLIC_BACKEND_URL
 
 RUN npm run build
