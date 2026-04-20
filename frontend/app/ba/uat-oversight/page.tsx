@@ -13,7 +13,7 @@ import {
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-function authHeader() {
+function authHeader(): Record<string, string> {
   const t = localStorage.getItem("authToken");
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
