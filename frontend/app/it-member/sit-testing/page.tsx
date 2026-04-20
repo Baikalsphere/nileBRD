@@ -71,7 +71,7 @@ const PRIORITY_CFG: Record<string, string> = {
   Low:      "bg-slate-100 text-slate-600 border-slate-200",
 };
 
-function authHeader() {
+function authHeader(): Record<string, string> {
   const t = localStorage.getItem("authToken");
   return t ? { Authorization: `Bearer ${t}` } : {};
 }

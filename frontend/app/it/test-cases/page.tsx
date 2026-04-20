@@ -205,7 +205,7 @@ function SITTab({ doc, onReleased }: { doc: TcListItem; onReleased: () => void }
             </button>
           )}
           <button onClick={() => downloadTestCasesAsPDF(
-            { ...doc.summary, doc_id: doc.doc_id, frd_doc_id: doc.frd_doc_id, brd_doc_id: doc.brd_doc_id, title: doc.request_title, version: "1.0", request_number: doc.req_number, total_cases: doc.total_cases },
+            { summary: doc.summary, doc_id: doc.doc_id, frd_doc_id: doc.frd_doc_id, brd_doc_id: doc.brd_doc_id, title: doc.request_title, version: "1.0", request_number: doc.req_number, total_cases: doc.total_cases },
             sit.sit_cases
           )} className="flex items-center gap-1.5 px-3 py-2 border border-slate-200 bg-white text-slate-600 text-sm rounded-xl hover:bg-slate-50">
             <FileDown className="w-3.5 h-3.5" /> Export PDF
