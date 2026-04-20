@@ -202,9 +202,12 @@ router.post("/", authenticateToken, upload.array("attachments", 10), async (req,
 
     await client.query("BEGIN");
 
-    // Generate request number
-    const countResult = await client.query("SELECT COUNT(*) FROM requests");
-    const reqNumber = `REQ-${1100 + parseInt(countResult.rows[0].count) + 1}`;
+    // Generate request number from the highest existing number to avoid collisions
+    const { rows: maxRow } = await client.query(
+      `SELECT COALESCE(MAX(CAST(SUBSTRING(req_number FROM 5) AS INTEGER)), 1100) AS max_num
+       FROM requests WHERE req_number ~ '^REQ-[0-9]+$'`
+    );
+    const reqNumber = `REQ-${maxRow[0].max_num + 1}`;
 
     // Resolve BA assignment
     let baId = null;
