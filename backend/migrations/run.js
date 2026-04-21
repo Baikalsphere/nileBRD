@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS request_attachments (
 ALTER TABLE request_attachments DROP COLUMN IF EXISTS data;
 ALTER TABLE request_attachments ADD COLUMN IF NOT EXISTS s3_key VARCHAR(500);
 
+ALTER TABLE requests ADD COLUMN IF NOT EXISTS previous_ba_id INTEGER REFERENCES users(id);
+
 CREATE INDEX IF NOT EXISTS idx_requests_ba ON requests(assigned_ba_id);
 CREATE INDEX IF NOT EXISTS idx_requests_stakeholder ON requests(stakeholder_id);
 

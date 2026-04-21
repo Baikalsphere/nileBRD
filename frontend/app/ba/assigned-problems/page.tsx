@@ -45,6 +45,20 @@ interface AssignedRequest {
   attachments: Attachment[];
 }
 
+interface PreviousRequest {
+  id: number;
+  req_number: string;
+  title: string;
+  priority: Priority;
+  category: string;
+  status: string;
+  created_at: string;
+  stakeholder_name: string | null;
+  stakeholder_email: string;
+  new_ba_name: string | null;
+  new_ba_email: string | null;
+}
+
 const priorityConfig: Record<Priority, { color: string; bg: string; border: string; icon: React.ReactNode }> = {
   Low:      { color: "text-emerald-600", bg: "bg-emerald-50",  border: "border-emerald-200", icon: <TrendingUp className="size-3" /> },
   Medium:   { color: "text-amber-600",   bg: "bg-amber-50",    border: "border-amber-200",   icon: <Clock className="size-3" /> },
@@ -176,13 +190,14 @@ function DetailsModal({ request, isOpen, onClose }: { request: AssignedRequest |
 
 
 export default function AssignedRequestsPage() {
-  const [requests, setRequests] = useState<AssignedRequest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
-  const [userId, setUserId]     = useState(0);
-  const [userName, setUserName] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [requests, setRequests]           = useState<AssignedRequest[]>([]);
+  const [prevRequests, setPrevRequests]   = useState<PreviousRequest[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState("");
+  const [refreshing, setRefreshing]       = useState(false);
+  const [userId, setUserId]               = useState(0);
+  const [userName, setUserName]           = useState("");
+  const [detailsOpen, setDetailsOpen]     = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<AssignedRequest | null>(null);
   const { openDiscussion } = useDiscussionPanel();
 
@@ -199,12 +214,15 @@ export default function AssignedRequestsPage() {
   const fetchRequests = async () => {
     try {
       const token = localStorage.getItem("authToken");
-      const res = await fetch(`${API}/api/requests/assigned`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch requests");
-      const data = await res.json();
-      setRequests(data.requests);
+      const [assignedRes, prevRes] = await Promise.all([
+        fetch(`${API}/api/requests/assigned`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API}/api/requests/previously-assigned`, { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      if (!assignedRes.ok) throw new Error("Failed to fetch requests");
+      const assignedData = await assignedRes.json();
+      const prevData = prevRes.ok ? await prevRes.json() : { requests: [] };
+      setRequests(assignedData.requests);
+      setPrevRequests(prevData.requests || []);
       setError("");
     } catch (err) {
       setError("Could not load assigned requests. Make sure you are logged in as a BA.");
@@ -404,6 +422,66 @@ export default function AssignedRequestsPage() {
             </p>
           </div>
         </Card>
+      )}
+
+      {/* Previously assigned — reassigned away from this BA */}
+      {prevRequests.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="size-4 text-slate-400" />
+            <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">Reassigned Away From You</h2>
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              {prevRequests.length}
+            </span>
+          </div>
+          <Card className="border-2 border-amber-200 overflow-hidden">
+            <div className="w-full overflow-x-auto">
+              <table className="w-full min-w-[580px] border-collapse">
+                <thead>
+                  <tr className="border-b-2 border-amber-200 bg-amber-50">
+                    <th className="w-[12%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-amber-700">ID</th>
+                    <th className="w-[28%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-amber-700">Title</th>
+                    <th className="w-[12%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-amber-700">Priority</th>
+                    <th className="w-[14%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-amber-700">Stakeholder</th>
+                    <th className="w-[22%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-amber-700">Now Assigned To</th>
+                    <th className="w-[12%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-amber-700">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-100">
+                  {prevRequests.map((r) => {
+                    const p = priorityConfig[r.priority as Priority] ?? priorityConfig.Medium;
+                    return (
+                      <tr key={r.id} className="bg-amber-50/30 hover:bg-amber-50/60 transition-colors">
+                        <td className="px-4 py-3 align-middle">
+                          <span className="font-mono text-xs font-bold text-amber-700 bg-amber-100 px-2 py-1 rounded">{r.req_number}</span>
+                        </td>
+                        <td className="px-4 py-3 align-middle max-w-0">
+                          <p className="text-xs font-semibold text-slate-800 truncate" title={r.title}>{r.title}</p>
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-bold ${p.color} ${p.bg} ${p.border}`}>
+                            {p.icon}<span>{r.priority}</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 align-middle max-w-0">
+                          <p className="text-xs text-slate-600 truncate">{r.stakeholder_name || r.stakeholder_email.split("@")[0]}</p>
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          <span className="text-xs font-semibold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-full">
+                            Assigned to {r.new_ba_name || r.new_ba_email || "—"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 align-middle whitespace-nowrap text-xs text-slate-500">
+                          {new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* Details Modal */}

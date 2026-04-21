@@ -3,6 +3,7 @@ import multer from "multer";
 import pool from "../config/db.js";
 import { uploadFile, getSignedDownloadUrl, deleteFile } from "../config/storage.js";
 import { authenticateToken } from "../middleware/auth.js";
+import { addMemberToChannel, removeMemberFromChannel, postSystemActivity } from "../services/streamService.js";
 
 const router = express.Router();
 
@@ -340,6 +341,112 @@ router.get("/assigned", authenticateToken, async (req, res) => {
   } catch (error) {
     console.error("Assigned requests error:", error);
     res.status(500).json({ message: "Error fetching assigned requests" });
+  }
+});
+
+// GET /api/requests/previously-assigned — requests that were reassigned away from this BA
+router.get("/previously-assigned", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") {
+      return res.status(403).json({ message: "BA only" });
+    }
+    const result = await pool.query(
+      `SELECT r.id, r.req_number, r.title, r.priority, r.category, r.status, r.created_at,
+              u.email AS stakeholder_email, u.name AS stakeholder_name,
+              nb.name AS new_ba_name, nb.email AS new_ba_email
+       FROM requests r
+       JOIN users u ON u.id = r.stakeholder_id
+       LEFT JOIN users nb ON nb.id = r.assigned_ba_id
+       WHERE r.previous_ba_id = $1
+       ORDER BY r.updated_at DESC`,
+      [req.user.id]
+    );
+    res.json({ requests: result.rows });
+  } catch (error) {
+    console.error("Previously-assigned error:", error);
+    res.status(500).json({ message: "Error fetching previously assigned requests" });
+  }
+});
+
+// PUT /api/requests/:id/reassign-ba — stakeholder reassigns the BA for their request
+router.put("/:id/reassign-ba", authenticateToken, async (req, res) => {
+  if (req.user.role !== "stakeholder") {
+    return res.status(403).json({ message: "Only stakeholders can reassign BA" });
+  }
+  const requestId = parseInt(req.params.id);
+  const { new_ba_id } = req.body;
+  if (!new_ba_id) return res.status(400).json({ message: "new_ba_id is required" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const { rows } = await client.query(
+      "SELECT id, assigned_ba_id, stakeholder_id FROM requests WHERE id = $1",
+      [requestId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Request not found" });
+    const request = rows[0];
+    if (request.stakeholder_id !== req.user.id) {
+      return res.status(403).json({ message: "Not your request" });
+    }
+
+    const oldBaId = request.assigned_ba_id;
+    const newBaId = parseInt(new_ba_id);
+    if (oldBaId === newBaId) return res.status(400).json({ message: "Already assigned to this BA" });
+
+    const { rows: newBaRows } = await client.query(
+      "SELECT id, name, email FROM users WHERE id = $1 AND role = 'ba'",
+      [newBaId]
+    );
+    if (!newBaRows.length) return res.status(404).json({ message: "BA not found" });
+    const newBa = newBaRows[0];
+
+    let oldBaName = null;
+    if (oldBaId) {
+      const { rows: oldBaRows } = await client.query("SELECT name, email FROM users WHERE id = $1", [oldBaId]);
+      if (oldBaRows.length) oldBaName = oldBaRows[0].name || oldBaRows[0].email;
+    }
+
+    await client.query(
+      `UPDATE requests SET assigned_ba_id = $1, previous_ba_id = $2, updated_at = NOW() WHERE id = $3`,
+      [newBaId, oldBaId, requestId]
+    );
+
+    // Update channel membership
+    if (oldBaId) {
+      try {
+        await removeMemberFromChannel(requestId, oldBaId);
+      } catch { /* channel may not exist yet */ }
+      await client.query(
+        "DELETE FROM channel_members WHERE request_id = $1 AND user_id = $2",
+        [requestId, oldBaId]
+      );
+    }
+    try {
+      await addMemberToChannel(requestId, newBaId, "moderator");
+    } catch { /* ignore if channel not yet created */ }
+    await client.query(
+      `INSERT INTO channel_members (request_id, user_id, stream_role)
+       VALUES ($1, $2, 'moderator') ON CONFLICT (request_id, user_id) DO UPDATE SET stream_role = 'moderator'`,
+      [requestId, newBaId]
+    );
+
+    await client.query("COMMIT");
+
+    const newBaLabel = newBa.name || newBa.email;
+    const msg = oldBaName
+      ? `BA reassigned from ${oldBaName} to ${newBaLabel}.`
+      : `BA assigned to ${newBaLabel}.`;
+    postSystemActivity(requestId, msg).catch(() => {});
+
+    res.json({ message: "BA reassigned successfully", new_ba: newBa });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error("Reassign BA error:", error);
+    res.status(500).json({ message: "Error reassigning BA" });
+  } finally {
+    client.release();
   }
 });
 

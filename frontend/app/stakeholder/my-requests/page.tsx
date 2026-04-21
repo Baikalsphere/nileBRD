@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Briefcase, CalendarDays, Check, Clock, Download, FileText,
   Flame, Inbox, Loader2, MessageSquare, Paperclip,
-  RefreshCw, TrendingUp, Users, Eye, Zap, AlertCircle,
+  RefreshCw, TrendingUp, Users, Eye, Zap, AlertCircle, UserCheck,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { useDiscussionPanel } from "@/components/dashboard/DiscussionPanel";
@@ -194,15 +194,123 @@ function DetailsModal({ request, isOpen, onClose }: { request: RequestItem | nul
   );
 }
 
+interface BA { id: number; name: string | null; email: string; }
+
+function ReassignModal({
+  request,
+  isOpen,
+  onClose,
+  onReassigned,
+}: {
+  request: RequestItem | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onReassigned: () => void;
+}) {
+  const [bas, setBas] = useState<BA[]>([]);
+  const [selectedBaId, setSelectedBaId] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const token = localStorage.getItem("authToken");
+    fetch(`${API}/api/requests/ba-list`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => setBas(d.bas || []))
+      .catch(() => setError("Failed to load BA list"));
+  }, [isOpen]);
+
+  if (!isOpen || !request) return null;
+
+  const handleSubmit = async () => {
+    if (!selectedBaId) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`${API}/api/requests/${request.id}/reassign-ba`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ new_ba_id: selectedBaId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed");
+      onReassigned();
+      onClose();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Reassign BA</h2>
+            <p className="text-sm text-slate-500">{request.req_number} — {request.title}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {request.ba_name && (
+            <p className="text-sm text-slate-600">
+              Currently assigned to: <span className="font-semibold text-indigo-700">{request.ba_name}</span>
+            </p>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Select New BA</label>
+            <select
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              value={selectedBaId ?? ""}
+              onChange={e => setSelectedBaId(Number(e.target.value))}
+            >
+              <option value="">Choose a BA…</option>
+              {bas
+                .filter(ba => ba.id !== (request as any).ba_id)
+                .map(ba => (
+                  <option key={ba.id} value={ba.id}>{ba.name || ba.email}</option>
+                ))}
+            </select>
+          </div>
+
+          {error && <p className="text-xs text-rose-600">{error}</p>}
+        </div>
+
+        <div className="border-t border-slate-200 flex justify-end gap-3 px-6 py-3 bg-slate-50 rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium text-sm">
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={!selectedBaId || submitting}
+            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold text-sm flex items-center gap-2"
+          >
+            {submitting ? <RefreshCw className="size-3.5 animate-spin" /> : <UserCheck className="size-3.5" />}
+            {submitting ? "Reassigning…" : "Confirm Reassign"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RequestsTable({
   requests,
   onDetails,
   onDiscussion,
+  onReassign,
   showSubmitter = false,
 }: {
   requests: RequestItem[];
   onDetails: (r: RequestItem) => void;
   onDiscussion: (r: RequestItem) => void;
+  onReassign?: (r: RequestItem) => void;
   showSubmitter?: boolean;
 }) {
   if (requests.length === 0) return null;
@@ -303,6 +411,15 @@ function RequestsTable({
                     >
                       <MessageSquare className="size-3.5" />
                     </button>
+                    {onReassign && !showSubmitter && (req.ba_name || req.ba_email) && (
+                      <button
+                        onClick={() => onReassign(req)}
+                        className="flex h-7 w-7 items-center justify-center rounded bg-amber-500 hover:bg-amber-600 text-white transition-all hover:shadow-md active:scale-95"
+                        title="Reassign BA"
+                      >
+                        <UserCheck className="size-3.5" />
+                      </button>
+                    )}
                     {req.attachments.length > 0 && (
                       <span className="inline-flex items-center justify-center rounded bg-slate-100 text-xs font-bold text-slate-600 h-7 w-6" title={`${req.attachments.length} attachment${req.attachments.length > 1 ? "s" : ""}`}>
                         {req.attachments.length}
@@ -326,8 +443,10 @@ export default function MyRequestsPage() {
   const [refreshing, setRefreshing]         = useState(false);
   const [userId, setUserId]                 = useState(0);
   const [userName, setUserName]             = useState("");
-  const [selectedRequest, setSelectedRequest] = useState<RequestItem | null>(null);
-  const [detailsOpen, setDetailsOpen]         = useState(false);
+  const [selectedRequest, setSelectedRequest]   = useState<RequestItem | null>(null);
+  const [detailsOpen, setDetailsOpen]           = useState(false);
+  const [reassignRequest, setReassignRequest]   = useState<RequestItem | null>(null);
+  const [reassignOpen, setReassignOpen]         = useState(false);
   const { openDiscussion } = useDiscussionPanel();
 
   const fetchData = useCallback(async () => {
@@ -356,6 +475,7 @@ export default function MyRequestsPage() {
 
   const handleDetails = (req: RequestItem) => { setSelectedRequest(req); setDetailsOpen(true); };
   const handleDiscussion = (req: RequestItem) => openDiscussion(req, userId, userName);
+  const handleReassign = (req: RequestItem) => { setReassignRequest(req); setReassignOpen(true); };
 
   const byPriority: Record<string, number> = {};
   myRequests.forEach((r) => { byPriority[r.priority] = (byPriority[r.priority] || 0) + 1; });
@@ -421,7 +541,7 @@ export default function MyRequestsPage() {
         </Card>
       ) : (
         <Card className="border-2 border-slate-300 overflow-hidden">
-          <RequestsTable requests={myRequests} onDetails={handleDetails} onDiscussion={handleDiscussion} />
+          <RequestsTable requests={myRequests} onDetails={handleDetails} onDiscussion={handleDiscussion} onReassign={handleReassign} />
           <div className="border-t-2 border-slate-300 bg-gradient-to-r from-slate-50 to-slate-100 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
               Total: <span className="font-bold text-slate-900">{myRequests.length}</span> request{myRequests.length !== 1 ? "s" : ""}
@@ -455,6 +575,14 @@ export default function MyRequestsPage() {
 
       {/* Details modal */}
       <DetailsModal request={selectedRequest} isOpen={detailsOpen} onClose={() => setDetailsOpen(false)} />
+
+      {/* Reassign modal */}
+      <ReassignModal
+        request={reassignRequest}
+        isOpen={reassignOpen}
+        onClose={() => setReassignOpen(false)}
+        onReassigned={handleRefresh}
+      />
     </div>
   );
 }
