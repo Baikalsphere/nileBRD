@@ -202,7 +202,8 @@ router.post("/", authenticateToken, upload.array("attachments", 10), async (req,
 
     await client.query("BEGIN");
 
-    // Generate request number from the highest existing number to avoid collisions
+    // Lock the table briefly so concurrent submissions don't read the same MAX
+    await client.query(`LOCK TABLE requests IN SHARE ROW EXCLUSIVE MODE`);
     const { rows: maxRow } = await client.query(
       `SELECT COALESCE(MAX(CAST(SUBSTRING(req_number FROM 5) AS INTEGER)), 1100) AS max_num
        FROM requests WHERE req_number ~ '^REQ-[0-9]+$'`
