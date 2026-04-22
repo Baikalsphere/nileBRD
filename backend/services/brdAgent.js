@@ -296,8 +296,11 @@ function extractComplianceSignals(messages) {
   };
 }
 
+// ─── Re-export completeness check from scopeWorkflowService ──────────────────
+export { checkCompleteness } from "./scopeWorkflowService.js";
+
 // ─── Main export ──────────────────────────────────────────────────────────────
-export async function analyseKeyPoints(messages, requestInfo) {
+export async function analyseKeyPoints(messages, requestInfo, documentText = "") {
   if (!messages || messages.length === 0) {
     return { error: "No key points to analyse. Please mark at least one message first." };
   }
@@ -366,5 +369,6 @@ export async function analyseKeyPoints(messages, requestInfo) {
     compliance_signals,
     brd_readiness:       readiness,
     message_count:       messages.length,
+    has_documents:       documentText.length > 0,
   };
 }
