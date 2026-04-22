@@ -3,6 +3,8 @@ import pool from "../config/db.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { analyseKeyPoints } from "../services/brdAgent.js";
 import { generateBRD, enhanceBRD } from "../services/brdGenerator.js";
+import { checkCompleteness, generateScope, generateWorkflow } from "../services/scopeWorkflowService.js";
+import { getRequestDocumentContext, formatDocumentContext } from "../services/documentParser.js";
 import { generateFRD } from "../services/frdGenerator.js";
 import { generateTestCases } from "../services/testCaseGenerator.js";
 import {
@@ -233,9 +235,8 @@ router.post("/channels/:requestId/generate-key-points", authenticateToken, async
     if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
     const { requestId } = req.params;
 
-    // Fetch request metadata
     const { rows: reqRows } = await pool.query(
-      `SELECT r.title, r.description, r.category, r.priority, r.status,
+      `SELECT r.id, r.title, r.description, r.category, r.priority, r.status, r.created_at,
               u.name AS stakeholder_name, u.email AS stakeholder_email
        FROM requests r
        LEFT JOIN users u ON u.id = r.stakeholder_id
@@ -244,18 +245,298 @@ router.post("/channels/:requestId/generate-key-points", authenticateToken, async
     );
     if (!reqRows.length) return res.status(404).json({ message: "Request not found" });
 
-    // Fetch all marked key-point messages
     const { rows: msgs } = await pool.query(
       `SELECT stream_message_id, message_text, sender_name, marked_at
        FROM important_messages WHERE request_id = $1 ORDER BY marked_at ASC`,
       [requestId]
     );
 
-    const analysis = await analyseKeyPoints(msgs, reqRows[0]);
+    // Parse attached documents and include in analysis context
+    const docs = await getRequestDocumentContext(requestId).catch(() => null);
+    const documentText = docs ? formatDocumentContext(docs) : "";
+
+    const analysis = await analyseKeyPoints(msgs, reqRows[0], documentText);
     res.json(analysis);
   } catch (err) {
     console.error("BRD agent error:", err);
     res.status(500).json({ message: "Analysis failed" });
+  }
+});
+
+// POST /api/stream/channels/:requestId/completeness-check — assess if discussion is ready
+router.post("/channels/:requestId/completeness-check", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { requestId } = req.params;
+
+    const { rows: reqRows } = await pool.query(
+      `SELECT r.id, r.title, r.description, r.category, r.priority, r.created_at,
+              u.name AS stakeholder_name
+       FROM requests r LEFT JOIN users u ON u.id = r.stakeholder_id
+       WHERE r.id = $1`,
+      [requestId]
+    );
+    if (!reqRows.length) return res.status(404).json({ message: "Request not found" });
+
+    const { rows: msgs } = await pool.query(
+      `SELECT stream_message_id, message_text, sender_name, marked_at
+       FROM important_messages WHERE request_id = $1 ORDER BY marked_at ASC`,
+      [requestId]
+    );
+
+    const docs = await getRequestDocumentContext(requestId).catch(() => null);
+    const documentText = docs ? formatDocumentContext(docs) : "";
+
+    const result = await checkCompleteness(msgs, reqRows[0], documentText);
+    res.json(result);
+  } catch (err) {
+    console.error("Completeness check error:", err);
+    res.status(500).json({ message: "Completeness check failed", detail: err.message });
+  }
+});
+
+// POST /api/stream/channels/:requestId/generate-scope — AI defines project scope
+router.post("/channels/:requestId/generate-scope", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { requestId } = req.params;
+
+    const { rows: reqRows } = await pool.query(
+      `SELECT r.id, r.title, r.description, r.category, r.priority, r.created_at
+       FROM requests r WHERE r.id = $1`,
+      [requestId]
+    );
+    if (!reqRows.length) return res.status(404).json({ message: "Request not found" });
+
+    const { rows: msgs } = await pool.query(
+      `SELECT stream_message_id, message_text, sender_name, marked_at
+       FROM important_messages WHERE request_id = $1 ORDER BY marked_at ASC`,
+      [requestId]
+    );
+
+    const docs = await getRequestDocumentContext(requestId).catch(() => null);
+    const documentText = docs ? formatDocumentContext(docs) : "";
+
+    const scopeContent = await generateScope(msgs, reqRows[0], documentText);
+
+    // Persist as draft scope
+    const { rows: saved } = await pool.query(
+      `INSERT INTO brd_scopes (request_id, content, status, created_by)
+       VALUES ($1, $2, 'draft', $3)
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [requestId, JSON.stringify(scopeContent), req.user.id]
+    );
+
+    // Upsert: if a scope already exists for this request, update it
+    let scopeId;
+    if (!saved.length) {
+      const { rows: upd } = await pool.query(
+        `UPDATE brd_scopes SET content = $1, status = 'draft', created_by = $2
+         WHERE request_id = $3
+         RETURNING id`,
+        [JSON.stringify(scopeContent), req.user.id, requestId]
+      );
+      scopeId = upd[0]?.id;
+    } else {
+      scopeId = saved[0].id;
+    }
+
+    res.json({ scope_id: scopeId, ...scopeContent });
+  } catch (err) {
+    console.error("Generate scope error:", err);
+    res.status(500).json({ message: "Scope generation failed", detail: err.message });
+  }
+});
+
+// PATCH /api/stream/channels/:requestId/scope — BA saves edited scope and optionally approves
+router.patch("/channels/:requestId/scope", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { requestId } = req.params;
+    const { content, approve } = req.body;
+    if (!content) return res.status(400).json({ message: "content required" });
+
+    const approvedAt = approve ? new Date() : null;
+    const status = approve ? "approved" : "draft";
+
+    await pool.query(
+      `UPDATE brd_scopes
+       SET content = $1, status = $2, approved_at = $3
+       WHERE request_id = $4`,
+      [JSON.stringify(content), status, approvedAt, requestId]
+    );
+
+    res.json({ ok: true, status });
+  } catch (err) {
+    console.error("Save scope error:", err);
+    res.status(500).json({ message: "Failed to save scope" });
+  }
+});
+
+// GET /api/stream/channels/:requestId/scope — fetch current scope
+router.get("/channels/:requestId/scope", authenticateToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { rows } = await pool.query(
+      `SELECT id, content, status, approved_at FROM brd_scopes
+       WHERE request_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [requestId]
+    );
+    if (!rows.length) return res.json(null);
+    res.json({ scope_id: rows[0].id, ...rows[0].content, status: rows[0].status, approved_at: rows[0].approved_at });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch scope" });
+  }
+});
+
+// POST /api/stream/channels/:requestId/generate-workflow — AI builds process workflow from approved scope
+router.post("/channels/:requestId/generate-workflow", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { requestId } = req.params;
+    const { scope_content } = req.body; // BA may pass their edited scope directly
+
+    const { rows: reqRows } = await pool.query(
+      `SELECT r.id, r.title, r.description, r.category, r.priority, r.created_at
+       FROM requests r WHERE r.id = $1`,
+      [requestId]
+    );
+    if (!reqRows.length) return res.status(404).json({ message: "Request not found" });
+
+    const { rows: msgs } = await pool.query(
+      `SELECT stream_message_id, message_text, sender_name, marked_at
+       FROM important_messages WHERE request_id = $1 ORDER BY marked_at ASC`,
+      [requestId]
+    );
+
+    const docs = await getRequestDocumentContext(requestId).catch(() => null);
+    const documentText = docs ? formatDocumentContext(docs) : "";
+
+    // Use provided scope or fall back to the saved approved scope
+    let approvedScope = scope_content;
+    if (!approvedScope) {
+      const { rows: scopeRows } = await pool.query(
+        `SELECT content FROM brd_scopes WHERE request_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [requestId]
+      );
+      if (scopeRows.length) approvedScope = scopeRows[0].content;
+    }
+
+    if (!approvedScope?.in_scope?.length) {
+      return res.status(400).json({ message: "No approved scope found. Please generate and approve a scope first." });
+    }
+
+    const workflowContent = await generateWorkflow(approvedScope, msgs, reqRows[0], documentText);
+
+    // Persist as draft workflow
+    const { rows: scopeRow } = await pool.query(
+      `SELECT id FROM brd_scopes WHERE request_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [requestId]
+    );
+    const scopeId = scopeRow[0]?.id || null;
+
+    await pool.query(
+      `INSERT INTO brd_workflows (request_id, scope_id, content, status, created_by)
+       VALUES ($1, $2, $3, 'draft', $4)
+       ON CONFLICT DO NOTHING`,
+      [requestId, scopeId, JSON.stringify(workflowContent), req.user.id]
+    );
+
+    // Upsert if already exists
+    await pool.query(
+      `UPDATE brd_workflows SET content = $1, status = 'draft', created_by = $2
+       WHERE request_id = $3 AND id NOT IN (
+         SELECT id FROM brd_workflows WHERE request_id = $3 ORDER BY created_at DESC LIMIT 0
+       )`,
+      [JSON.stringify(workflowContent), req.user.id, requestId]
+    );
+
+    const { rows: wfRows } = await pool.query(
+      `SELECT id FROM brd_workflows WHERE request_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [requestId]
+    );
+
+    res.json({ workflow_id: wfRows[0]?.id, ...workflowContent });
+  } catch (err) {
+    console.error("Generate workflow error:", err);
+    res.status(500).json({ message: "Workflow generation failed", detail: err.message });
+  }
+});
+
+// PATCH /api/stream/channels/:requestId/workflow — BA saves edited workflow and optionally approves
+router.patch("/channels/:requestId/workflow", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { requestId } = req.params;
+    const { content, approve } = req.body;
+    if (!content) return res.status(400).json({ message: "content required" });
+
+    const approvedAt = approve ? new Date() : null;
+    const status = approve ? "approved" : "draft";
+
+    await pool.query(
+      `UPDATE brd_workflows
+       SET content = $1, status = $2, approved_at = $3
+       WHERE request_id = $4`,
+      [JSON.stringify(content), status, approvedAt, requestId]
+    );
+
+    res.json({ ok: true, status });
+  } catch (err) {
+    console.error("Save workflow error:", err);
+    res.status(500).json({ message: "Failed to save workflow" });
+  }
+});
+
+// GET /api/stream/channels/:requestId/workflow — fetch current workflow
+router.get("/channels/:requestId/workflow", authenticateToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { rows } = await pool.query(
+      `SELECT id, content, status, approved_at FROM brd_workflows
+       WHERE request_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [requestId]
+    );
+    if (!rows.length) return res.json(null);
+    res.json({ workflow_id: rows[0].id, ...rows[0].content, status: rows[0].status, approved_at: rows[0].approved_at });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch workflow" });
+  }
+});
+
+// PATCH /api/stream/brd-documents/:brdId/sections — BA edits a specific section of the BRD
+router.patch("/brd-documents/:brdId/sections", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { brdId } = req.params;
+    const { section, value } = req.body;
+    if (!section || value === undefined) return res.status(400).json({ message: "section and value required" });
+
+    const { rows } = await pool.query(
+      "SELECT content FROM brd_documents WHERE id = $1 AND generated_by = $2",
+      [brdId, req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "BRD not found" });
+
+    const content = rows[0].content;
+    // Support dot-path: "sections.executive_summary.text"
+    const parts = section.split(".");
+    let target = content;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (target[parts[i]] === undefined) target[parts[i]] = {};
+      target = target[parts[i]];
+    }
+    target[parts[parts.length - 1]] = value;
+
+    await pool.query(
+      "UPDATE brd_documents SET content = $1, updated_at = NOW() WHERE id = $2",
+      [JSON.stringify(content), brdId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("BRD section edit error:", err);
+    res.status(500).json({ message: "Failed to update BRD section" });
   }
 });
 
@@ -264,11 +545,11 @@ router.post("/channels/:requestId/generate-brd", authenticateToken, async (req, 
   try {
     if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
     const { requestId } = req.params;
-    const { analysis } = req.body; // pre-computed analysis JSON from generate-key-points
+    const { analysis } = req.body;
     if (!analysis) return res.status(400).json({ message: "analysis payload required" });
 
     const { rows: reqRows } = await pool.query(
-      `SELECT r.id, r.req_number, r.title, r.description, r.category, r.priority, r.status,
+      `SELECT r.id, r.req_number, r.title, r.description, r.category, r.priority, r.status, r.created_at,
               u.name AS stakeholder_name, u.email AS stakeholder_email
        FROM requests r
        LEFT JOIN users u ON u.id = r.stakeholder_id
@@ -283,7 +564,19 @@ router.post("/channels/:requestId/generate-brd", authenticateToken, async (req, 
       [requestId]
     );
 
-    const brd = await generateBRD(analysis, reqRows[0], msgs);
+    // Fetch documents and approved workflow to ground the BRD
+    const [docs, wfRows] = await Promise.all([
+      getRequestDocumentContext(requestId).catch(() => null),
+      pool.query(
+        `SELECT content FROM brd_workflows WHERE request_id = $1 AND status = 'approved'
+         ORDER BY created_at DESC LIMIT 1`,
+        [requestId]
+      ),
+    ]);
+    const documentText = docs ? formatDocumentContext(docs) : "";
+    const approvedWorkflow = wfRows.rows[0]?.content || null;
+
+    const brd = await generateBRD(analysis, reqRows[0], msgs, documentText, approvedWorkflow);
 
     // Upsert: one draft BRD per request (replace previous draft)
     const { rows: existing } = await pool.query(

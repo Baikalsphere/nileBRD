@@ -355,7 +355,62 @@ function cleanToRequirement(raw) {
   return cap(text);
 }
 
-// ─── Azure OpenAI text generation ────────────────────────────────────────────
+// ─── Strict grounding system prompt (prevents hallucination) ─────────────────
+const GROUNDING_SYSTEM = `You are a precise Business Analyst writing formal BRD documentation.
+
+CRITICAL RULES — violating any of these is a failure:
+1. Use ONLY information explicitly stated in the source discussion and documents provided.
+2. Do NOT infer, assume, extrapolate, or add ANY information not present in the source material.
+3. Do NOT use dates, vendor names, SLA values, or technical details unless they appear verbatim in the source.
+4. If required information is missing, state "Not specified in the discussion" — never fill in a plausible value.
+5. Never draw on training data about similar projects. Only this project's actual discussion matters.`;
+
+// ─── Build the source context block injected into every grounded prompt ───────
+function buildFullSourceContext(messages, requestInfo, documentText = "") {
+  const submittedDate = requestInfo.created_at
+    ? new Date(requestInfo.created_at).toLocaleDateString("en-GB", {
+        day: "2-digit", month: "long", year: "numeric",
+      })
+    : "Not provided";
+
+  const msgBlock = messages.length
+    ? messages.map((m, i) => `[${i + 1}] ${m.sender_name || "Participant"}: ${m.message_text}`).join("\n")
+    : "(No messages provided)";
+
+  const docBlock = documentText ? `\n\n=== ATTACHED DOCUMENTS ===\n${documentText}` : "";
+
+  return (
+    `=== PROJECT CONTEXT ===\n` +
+    `Title: ${requestInfo.title || "Not specified"}\n` +
+    `Category: ${requestInfo.category || "Not specified"}\n` +
+    `Priority: ${requestInfo.priority || "Not specified"}\n` +
+    `Submitted: ${submittedDate}\n` +
+    (requestInfo.description ? `Problem Statement: ${requestInfo.description}\n` : "") +
+    `\n=== KEY DISCUSSION MESSAGES ===\n${msgBlock}` +
+    docBlock
+  );
+}
+
+// ─── Azure OpenAI text generation — grounded (preferred) ─────────────────────
+async function generateGroundedText(prompt, sourceContext, maxTokens = 300) {
+  try {
+    const response = await azureClient.chat.completions.create({
+      model:      process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o",
+      messages:   [
+        { role: "system", content: GROUNDING_SYSTEM },
+        { role: "user",   content: `${sourceContext}\n\n${prompt}` },
+      ],
+      temperature: 0,
+      max_tokens:  maxTokens,
+    });
+    return response.choices[0].message.content?.trim() || "";
+  } catch (err) {
+    console.warn("[BRD Generator] Grounded generation failed:", err.message);
+    return "";
+  }
+}
+
+// ─── Azure OpenAI text generation — legacy (used only for requirement rewriting) ─
 async function generateText(prompt, maxTokens = 300) {
   try {
     const response = await azureClient.chat.completions.create({
@@ -591,11 +646,75 @@ const FUNCTIONAL_AREAS = [
 ];
 
 /**
- * Groups each requirement from the agent into the best-matching functional area.
- * Returns: { area: AreaDef, matchedTexts: string[] }[]
+ * Dynamically extracts functional requirements from the actual discussion.
+ * Replaces hardcoded FUNCTIONAL_AREAS matching — no bank-statement boilerplate injected.
+ * Each FR is grounded strictly in what was discussed.
+ */
+async function buildFunctionalRequirementsFromContext(sourceContext, requirements) {
+  const reqList = requirements.map((r, i) => `${i + 1}. ${r}`).join("\n");
+
+  const prompt =
+    `The following key requirements were extracted from the discussion:\n${reqList}\n\n` +
+    `Based ONLY on the source discussion above and these requirements:\n` +
+    `1. Group the requirements into logical functional areas (use names that reflect what was actually discussed).\n` +
+    `2. For each functional area, write a comprehensive "The system shall..." requirement statement.\n` +
+    `3. Assign a MoSCoW priority (Must Have / Should Have / Could Have / Won't Have) based on language in the discussion.\n\n` +
+    `Return a JSON object:\n` +
+    `{ "functional_requirements": [\n` +
+    `  { "title": "<area name>", "description": "<formal The system shall... requirement>", "rationale": "<one sentence why this matters — from the discussion>", "priority": "<MoSCoW>", "source_messages": ["<verbatim quote from discussion that requires this>"] }\n` +
+    `] }\n\n` +
+    `Rules:\n` +
+    `- Do NOT add functional areas not mentioned in the discussion.\n` +
+    `- Do NOT use generic bank-statement, fraud, or income-assessment boilerplate unless the discussion explicitly discusses it.\n` +
+    `- Every requirement must trace back to at least one message in the discussion.`;
+
+  try {
+    const res = await azureClient.chat.completions.create({
+      model:           process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o",
+      messages:        [
+        { role: "system", content: GROUNDING_SYSTEM },
+        { role: "user",   content: `${sourceContext}\n\n${prompt}` },
+      ],
+      temperature:     0,
+      response_format: { type: "json_object" },
+    });
+
+    const parsed = JSON.parse(res.choices[0].message.content || "{}");
+    const items  = Array.isArray(parsed.functional_requirements) ? parsed.functional_requirements : [];
+
+    return items.map((fr, i) => ({
+      id:          `FR-${String(i + 1).padStart(3, "0")}`,
+      title:       fr.title        || `Functional Requirement ${i + 1}`,
+      description: fr.description  || "Not specified in the discussion.",
+      rationale:   fr.rationale    || "",
+      priority:    fr.priority     || "Must Have",
+      source:      fr.source_messages?.join("; ") || "Key Stakeholder Discussion",
+    }));
+  } catch (err) {
+    console.warn("[BRD Generator] Dynamic FR extraction failed:", err.message);
+    // Fallback: formalise each requirement individually
+    const frs = [];
+    for (const [i, req] of requirements.entries()) {
+      const formal = await formaliseRequirement(req);
+      frs.push({
+        id:          `FR-${String(i + 1).padStart(3, "0")}`,
+        title:       formal.split(" ").slice(0, 8).join(" "),
+        description: formal,
+        rationale:   "",
+        priority:    moscowPriority(req),
+        source:      "Key Stakeholder Discussion",
+      });
+    }
+    return frs;
+  }
+}
+
+/**
+ * Legacy: groups requirements by hardcoded FUNCTIONAL_AREAS.
+ * Kept only for the `grouped` object used by buildGoals / buildScopeSection.
  */
 function groupRequirementsByArea(requirements, allText, signals) {
-  const matched = new Map(); // areaId → { area, texts }
+  const matched = new Map();
 
   FUNCTIONAL_AREAS.forEach((area) => {
     const texts = requirements.filter((r) =>
@@ -604,7 +723,6 @@ function groupRequirementsByArea(requirements, allText, signals) {
     if (texts.length > 0) matched.set(area.id, { area, texts });
   });
 
-  // Also activate areas based on domain signals in the FULL text
   FUNCTIONAL_AREAS.forEach((area) => {
     if (!matched.has(area.id) && area.signals.some((re) => re.test(allText))) {
       matched.set(area.id, { area, texts: [] });
@@ -615,9 +733,8 @@ function groupRequirementsByArea(requirements, allText, signals) {
 }
 
 /**
- * Builds the functional requirements list from grouped areas + unclustered messages.
- * Each area → one comprehensive, professional FR.
- * Unclustered messages → individually formalised FRs.
+ * Legacy buildFunctionalRequirements — kept only as internal fallback reference.
+ * The main path now uses buildFunctionalRequirementsFromContext().
  */
 async function buildFunctionalRequirements(requirements, allText, integrationSignals, keywords) {
   const grouped   = groupRequirementsByArea(requirements, allText, integrationSignals);
@@ -627,7 +744,6 @@ async function buildFunctionalRequirements(requirements, allText, integrationSig
   const frs = [];
   let counter = 1;
 
-  // One comprehensive FR per functional area
   for (const { area, texts } of grouped) {
     const { description, rationale } = area.build(texts, integrationSignals, keywords);
     frs.push({
@@ -636,11 +752,10 @@ async function buildFunctionalRequirements(requirements, allText, integrationSig
       description,
       rationale,
       priority:    area.priority,
-      source:      texts.length > 0 ? "Key Stakeholder Discussion" : "Domain Signal (best practice inclusion)",
+      source:      texts.length > 0 ? "Key Stakeholder Discussion" : "Domain Signal",
     });
   }
 
-  // Individually formalised fallback FRs for unclustered messages
   for (const req of unclustered.slice(0, 4)) {
     const formal = await formaliseRequirement(req);
     frs.push({
@@ -812,68 +927,52 @@ function buildProcessFlow(allText, integrationSignals, title) {
   return steps.map((s, i) => ({ ...s, step: i + 1 }));
 }
 
-// ─── Executive summary — professional template ─────────────────────────────────
-async function generateExecutiveSummary(analysis, requestInfo, integrationSignals, complianceSignals) {
+// ─── Executive summary — grounded generation ──────────────────────────────────
+async function generateExecutiveSummary(analysis, requestInfo, integrationSignals, complianceSignals, sourceContext) {
+  const submittedDate = requestInfo.created_at
+    ? new Date(requestInfo.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })
+    : "Not specified";
+
+  const prompt =
+    `Write a professional 3-sentence executive summary for a Business Requirements Document.\n` +
+    `Use ONLY the information provided in the source context above. Do not add details not present there.\n` +
+    `Include: (1) the business problem from the discussion, (2) the proposed solution scope, (3) the expected benefit.\n` +
+    `Use ${submittedDate} as the document date if dates are referenced. Do NOT invent dates.\n` +
+    `Executive Summary (3 sentences only):`;
+
+  const aiOut = await generateGroundedText(prompt, sourceContext, 200);
+  if (aiOut.length > 60 && !aiOut.includes("undefined")) return aiOut;
+
+  // Structured fallback using only what we know from the request record
   const title    = requestInfo.title    || "this initiative";
   const category = requestInfo.category || "General";
   const priority = requestInfo.priority || "Medium";
-  const keywords = (analysis.keywords || []).slice(0, 5).join(", ");
-
-  // Try GPT-4o first
-  const prompt =
-    `Write a professional 3-sentence executive summary for a Business Requirements Document.\n` +
-    `Project: "${title}". Domain: ${category}. Priority: ${priority}.\n` +
-    `Key topics: ${keywords || category}. Include business problem, proposed solution, and expected benefit.\nExecutive Summary:`;
-  const aiOut = await generateText(prompt, 150);
-  if (
-    aiOut.length > 60 &&
-    !aiOut.includes("undefined") &&
-    !aiOut.toLowerCase().includes(prompt.slice(0, 15).toLowerCase())
-  ) return aiOut;
-
-  // Structured template fallback
-  const hasIntegration = integrationSignals?.has_api_integration;
-  const hasConsent     = complianceSignals?.consent_required;
-  const hasStorage     = complianceSignals?.storage_restricted;
-
-  const problemCtx  = keywords ? `involving ${keywords}` : `in the ${category.toLowerCase()} domain`;
-  const solutionCtx = hasIntegration
-    ? `an integrated, automated solution with third-party API connectivity`
-    : `a structured digital solution`;
-  const complianceCtx = hasConsent || hasStorage
-    ? ` The solution incorporates regulatory compliance controls including customer consent management and data minimisation to meet applicable data protection obligations.`
-    : "";
 
   return (
-    `This Business Requirements Document defines the functional scope, process flow, integration specifications, and compliance obligations for the "${cap(title)}" initiative ${problemCtx}. ` +
-    `The organisation requires ${solutionCtx} to address identified operational gaps, improve processing efficiency, and deliver consistent, auditable outcomes for all stakeholders. ` +
-    `Delivery of this initiative at ${priority.toLowerCase()} priority is expected to improve operational efficiency, reduce manual effort, and provide measurable business value.` +
-    complianceCtx
+    `This Business Requirements Document defines the scope and functional requirements for the "${cap(title)}" initiative submitted on ${submittedDate}. ` +
+    `The ${category} domain requirement has been raised at ${priority} priority to address the business need described by the stakeholder. ` +
+    `Delivery of this initiative is expected to resolve the identified gaps and provide measurable value to the organisation.`
   );
 }
 
-// ─── Business objective — SMART template ──────────────────────────────────────
-async function generateObjective(analysis, requestInfo, grouped) {
-  const title    = requestInfo.title    || "this initiative";
-  const category = requestInfo.category || "General";
-  const priority = requestInfo.priority || "Medium";
-
+// ─── Business objective — grounded SMART template ─────────────────────────────
+async function generateObjective(analysis, requestInfo, grouped, sourceContext) {
   const prompt =
-    `Write a 2-sentence SMART business objective for: "${title}" in the ${category} domain.\n` +
-    `State the specific business purpose and a measurable expected outcome.\nObjective:`;
-  const aiOut = await generateText(prompt, 100);
+    `Write a 2-sentence SMART business objective for this project.\n` +
+    `Use ONLY the business problem and goals stated in the source context above.\n` +
+    `State: (1) the specific business purpose from the discussion, (2) a measurable outcome grounded in what was discussed.\n` +
+    `Do NOT invent metrics, percentages, or goals not mentioned in the discussion.\n` +
+    `Objective (2 sentences only):`;
+
+  const aiOut = await generateGroundedText(prompt, sourceContext, 150);
   if (aiOut.length > 30 && !aiOut.includes("undefined") && !/^(write|provide)/i.test(aiOut))
     return aiOut;
 
-  const areaNames = grouped.map((g) => g.area.name.toLowerCase()).slice(0, 3);
-  const coverageStr = areaNames.length
-    ? areaNames.join(", ")
-    : `${category.toLowerCase()} process management`;
-
+  const title    = requestInfo.title    || "this initiative";
+  const category = requestInfo.category || "General";
   return (
-    `To deliver a comprehensive, automated ${category.toLowerCase()} processing capability for "${cap(title)}" that covers ${coverageStr}, ` +
-    `with ${priority.toLowerCase()} priority focus and measurable outcomes aligned to the organisation's operational and regulatory obligations. ` +
-    `Success will be measured by a reduction in manual processing time, full traceability of all processing decisions, and compliance with applicable regulatory requirements from day one of production operation.`
+    `To deliver the "${cap(title)}" capability as described by the stakeholder in the ${category} domain. ` +
+    `Success will be measured by the fulfilment of the requirements stated in this document and acceptance by the stakeholder.`
   );
 }
 
@@ -977,10 +1076,13 @@ export async function enhanceBRD(existingBrd, improvementComments, requestInfo) 
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
-export async function generateBRD(analysis, requestInfo, messages = []) {
+export async function generateBRD(analysis, requestInfo, messages = [], documentText = "", approvedWorkflow = null) {
   const now        = new Date();
   const versionNum = "0.1";
   const docId      = `BRD-${requestInfo.req_number || requestInfo.id || "DRAFT"}-v${versionNum}`;
+
+  // Build the single source-of-truth context for all grounded AI calls
+  const sourceContext = buildFullSourceContext(messages, requestInfo, documentText);
 
   const allReqText     = [...(analysis.key_requirements || []), ...(analysis.action_items || [])].join(" ");
   const allConcernText = (analysis.stakeholder_concerns || []).join(" ");
@@ -990,24 +1092,33 @@ export async function generateBRD(analysis, requestInfo, messages = []) {
   const integrationSignals = analysis.integration_signals || {};
   const complianceSignals  = analysis.compliance_signals  || {};
 
-  // ── 1. Group requirements into functional areas ──────────────────────────
+  // ── 1. Group requirements (legacy — used only for goals + scope narrative)
   const grouped = groupRequirementsByArea(analysis.key_requirements || [], allText, integrationSignals);
 
-  // ── 2. Parallel AI tasks ─────────────────────────────────────────────────
+  // ── 2. Parallel AI tasks (grounded) ─────────────────────────────────────
   const [execSummary, objective] = await Promise.all([
-    generateExecutiveSummary(analysis, requestInfo, integrationSignals, complianceSignals),
-    generateObjective(analysis, requestInfo, grouped),
+    generateExecutiveSummary(analysis, requestInfo, integrationSignals, complianceSignals, sourceContext),
+    generateObjective(analysis, requestInfo, grouped, sourceContext),
   ]);
 
   // ── 3. Goals ─────────────────────────────────────────────────────────────
   const goals = buildGoals(grouped, requestInfo, integrationSignals, complianceSignals);
 
-  // ── 4. Scope (narrative + process flow — NOT copy-paste of requirements) ─
-  const scope = buildScopeSection(grouped, requestInfo, allText, integrationSignals, complianceSignals);
+  // ── 4. Scope — use approved workflow steps if available, else derive ──────
+  let scope;
+  if (approvedWorkflow?.steps?.length) {
+    // Use the BA-approved workflow steps as the process flow
+    scope = buildScopeSection(grouped, requestInfo, allText, integrationSignals, complianceSignals);
+    scope.process_flow = approvedWorkflow.steps;
+    scope.summary = approvedWorkflow.workflow_title || scope.summary;
+  } else {
+    scope = buildScopeSection(grouped, requestInfo, allText, integrationSignals, complianceSignals);
+  }
 
-  // ── 5. Functional requirements (synthesised per area) ────────────────────
-  const formalRequirements = await buildFunctionalRequirements(
-    analysis.key_requirements || [], allText, integrationSignals, analysis.keywords || []
+  // ── 5. Functional requirements — GROUNDED dynamic extraction ─────────────
+  const formalRequirements = await buildFunctionalRequirementsFromContext(
+    sourceContext,
+    analysis.key_requirements || []
   );
 
   // ── 6. NFRs ──────────────────────────────────────────────────────────────

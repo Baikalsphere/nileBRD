@@ -322,6 +322,31 @@ CREATE TABLE IF NOT EXISTS production_defects (
 );
 CREATE INDEX IF NOT EXISTS idx_defects_request ON production_defects(request_id);
 
+-- BRD Scope definitions (BA-approved scope before BRD generation)
+CREATE TABLE IF NOT EXISTS brd_scopes (
+  id           SERIAL PRIMARY KEY,
+  request_id   INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  content      JSONB NOT NULL,
+  status       VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'approved')),
+  created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  approved_at  TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_brd_scopes_request ON brd_scopes(request_id);
+
+-- BRD Workflow definitions (BA-approved workflow before BRD generation)
+CREATE TABLE IF NOT EXISTS brd_workflows (
+  id           SERIAL PRIMARY KEY,
+  request_id   INTEGER REFERENCES requests(id) ON DELETE CASCADE,
+  scope_id     INTEGER REFERENCES brd_scopes(id) ON DELETE SET NULL,
+  content      JSONB NOT NULL,
+  status       VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'approved')),
+  created_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  approved_at  TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_brd_workflows_request ON brd_workflows(request_id);
+
 -- Production release status (created when Production deployment is done)
 CREATE TABLE IF NOT EXISTS production_releases (
   id                    SERIAL PRIMARY KEY,
