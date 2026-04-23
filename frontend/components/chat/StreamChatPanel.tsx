@@ -641,9 +641,11 @@ function AnalysisModal({
 function CompletenessModal({
   result,
   onClose,
+  onBackToChat,
 }: {
   result: CompletenessResult;
   onClose: () => void;
+  onBackToChat?: () => void;
 }) {
   const score = result.completeness_score;
   const scoreColor = score >= 75 ? "text-emerald-600" : score >= 50 ? "text-amber-600" : "text-rose-600";
@@ -727,9 +729,17 @@ function CompletenessModal({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-slate-100 p-4">
-        <button onClick={onClose} className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">
-          <ChevronRight className="size-4" /> Got it — proceed to scope definition
+      <div className="shrink-0 border-t border-slate-100 p-4 flex gap-2">
+        {onBackToChat && (
+          <button
+            onClick={onBackToChat}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <ArrowLeft className="size-3.5" /> Back to Discussion
+          </button>
+        )}
+        <button onClick={onClose} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">
+          <ChevronRight className="size-4" /> Proceed to Scope
         </button>
       </div>
     </div>
@@ -741,10 +751,12 @@ function ScopeModal({
   scope,
   onClose,
   onSave,
+  onBackToChat,
 }: {
   scope: ScopeResult;
   onClose: () => void;
   onSave: (content: ScopeResult, approve: boolean) => Promise<void>;
+  onBackToChat?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ScopeResult>(scope);
@@ -842,22 +854,32 @@ function ScopeModal({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-slate-100 p-4 flex gap-2">
-        <button
-          onClick={() => save(false)}
-          disabled={saving}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-        >
-          <Save className="size-3.5" /> Save Draft
-        </button>
-        <button
-          onClick={() => save(true)}
-          disabled={saving}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-          Approve Scope
-        </button>
+      <div className="shrink-0 border-t border-slate-100 p-4 space-y-2">
+        {onBackToChat && (
+          <button
+            onClick={onBackToChat}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+          >
+            <ArrowLeft className="size-3.5" /> Back to Discussion (gather more information)
+          </button>
+        )}
+        <div className="flex gap-2">
+          <button
+            onClick={() => save(false)}
+            disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <Save className="size-3.5" /> Save Draft
+          </button>
+          <button
+            onClick={() => save(true)}
+            disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+            Approve Scope
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -868,10 +890,12 @@ function WorkflowModal({
   workflow,
   onClose,
   onSave,
+  onBackToChat,
 }: {
   workflow: WorkflowResult;
   onClose: () => void;
   onSave: (content: WorkflowResult, approve: boolean) => Promise<void>;
+  onBackToChat?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<WorkflowResult>(workflow);
@@ -961,22 +985,32 @@ function WorkflowModal({
         ))}
       </div>
 
-      <div className="shrink-0 border-t border-slate-100 p-4 flex gap-2">
-        <button
-          onClick={() => save(false)}
-          disabled={saving}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-        >
-          <Save className="size-3.5" /> Save Draft
-        </button>
-        <button
-          onClick={() => save(true)}
-          disabled={saving}
-          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
-          Approve Workflow
-        </button>
+      <div className="shrink-0 border-t border-slate-100 p-4 space-y-2">
+        {onBackToChat && (
+          <button
+            onClick={onBackToChat}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+          >
+            <ArrowLeft className="size-3.5" /> Back to Discussion (gather more information)
+          </button>
+        )}
+        <div className="flex gap-2">
+          <button
+            onClick={() => save(false)}
+            disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            <Save className="size-3.5" /> Save Draft
+          </button>
+          <button
+            onClick={() => save(true)}
+            disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+            Approve Workflow
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1448,17 +1482,31 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
 
           {/* Completeness check modal */}
           {analysis && showCompletenessModal && completenessResult && (
-            <CompletenessModal result={completenessResult} onClose={() => setShowCompletenessModal(false)} />
+            <CompletenessModal
+              result={completenessResult}
+              onClose={() => setShowCompletenessModal(false)}
+              onBackToChat={() => { setShowCompletenessModal(false); setAnalysis(null); }}
+            />
           )}
 
           {/* Scope review modal */}
           {analysis && showScopeModal && scopeResult && (
-            <ScopeModal scope={scopeResult} onClose={() => setShowScopeModal(false)} onSave={saveScope} />
+            <ScopeModal
+              scope={scopeResult}
+              onClose={() => setShowScopeModal(false)}
+              onSave={saveScope}
+              onBackToChat={() => { setShowScopeModal(false); setAnalysis(null); }}
+            />
           )}
 
           {/* Workflow review modal */}
           {analysis && showWorkflowModal && workflowResult && (
-            <WorkflowModal workflow={workflowResult} onClose={() => setShowWorkflowModal(false)} onSave={saveWorkflow} />
+            <WorkflowModal
+              workflow={workflowResult}
+              onClose={() => setShowWorkflowModal(false)}
+              onSave={saveWorkflow}
+              onBackToChat={() => { setShowWorkflowModal(false); setAnalysis(null); }}
+            />
           )}
 
           {/* Key Points panel */}

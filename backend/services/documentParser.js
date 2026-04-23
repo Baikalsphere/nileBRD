@@ -1,12 +1,19 @@
 /**
  * documentParser.js — Downloads and extracts text from request attachments stored in Supabase.
  *
- * Supports: plain text, PDF (best-effort ASCII extraction), DOCX (XML text extraction).
+ * Supports: PDF (via pdf-parse), DOCX (XML extraction), plain text, CSV.
  * All other formats return filename + size metadata so they still appear in the BRD context.
+ *
+ * Text limit: 15 000 chars per document (enough for a full spec doc to be useful).
  */
 
+import { createRequire } from "module";
 import pool from "../config/db.js";
 import { getSignedDownloadUrl } from "../config/storage.js";
+
+const require = createRequire(import.meta.url);
+
+const TEXT_LIMIT = 15000;
 
 async function fetchBuffer(signedUrl) {
   const res = await fetch(signedUrl);
@@ -16,28 +23,35 @@ async function fetchBuffer(signedUrl) {
 }
 
 /**
- * Best-effort text extraction from a PDF buffer.
- * Works for uncompressed / partially compressed PDFs by scanning for readable strings.
+ * PDF text extraction using pdf-parse.
+ * Falls back to regex scanning if pdf-parse is unavailable or fails on a specific file.
  */
-function extractPdfText(buffer) {
+async function extractPdfText(buffer) {
+  try {
+    // Use lib/pdf-parse directly to avoid the test-file require side-effect
+    const pdfParse = require("pdf-parse/lib/pdf-parse.js");
+    const data = await pdfParse(buffer, { max: 0 }); // max:0 = all pages
+    const text = (data.text || "").replace(/\s+/g, " ").trim();
+    if (text.length > 50) return text.slice(0, TEXT_LIMIT);
+  } catch (parseErr) {
+    // pdf-parse failed — fall through to regex fallback
+  }
+
+  // Regex fallback: scan for readable strings between BT/ET operators
   const raw = buffer.toString("latin1");
   const chunks = [];
 
-  // Extract text between BT (begin text) and ET (end text) operators
   const btEt = /BT\s*([\s\S]*?)\s*ET/g;
   let m;
   while ((m = btEt.exec(raw)) !== null) {
-    const block = m[1];
-    // Pull out parenthesised strings: (hello world)
     const strRe = /\(([^)]{1,300})\)/g;
     let sm;
-    while ((sm = strRe.exec(block)) !== null) {
+    while ((sm = strRe.exec(m[1])) !== null) {
       const t = sm[1].replace(/\\n/g, " ").replace(/\\r/g, "").replace(/[^\x20-\x7E]/g, "").trim();
       if (t.length > 3) chunks.push(t);
     }
   }
 
-  // Fallback: extract any long ASCII runs
   if (chunks.length < 5) {
     const asciiRe = /[ -~]{6,}/g;
     let am;
@@ -48,24 +62,26 @@ function extractPdfText(buffer) {
     }
   }
 
-  return chunks.join(" ").replace(/\s+/g, " ").trim().slice(0, 6000);
+  const text = chunks.join(" ").replace(/\s+/g, " ").trim();
+  return text.slice(0, TEXT_LIMIT) || "";
 }
 
 /**
- * Best-effort text extraction from a DOCX buffer (ZIP containing word/document.xml).
- * Node does not have a built-in ZIP parser, so we scan for XML text runs directly.
+ * DOCX text extraction by scanning word/document.xml for <w:t> text runs.
  */
 function extractDocxText(buffer) {
-  const raw = buffer.toString("utf-8", 0, buffer.length);
-  // DOCX text lives in <w:t> elements
+  const raw = buffer.toString("utf-8", 0, Math.min(buffer.length, 2 * 1024 * 1024));
   const textRe = /<w:t[^>]*>([\s\S]*?)<\/w:t>/g;
   const parts = [];
   let m;
   while ((m = textRe.exec(raw)) !== null) {
-    const t = m[1].replace(/</g, "<").replace(/>/g, ">").replace(/&amp;/g, "&").trim();
+    const t = m[1]
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+      .trim();
     if (t.length > 1) parts.push(t);
   }
-  return parts.join(" ").replace(/\s+/g, " ").trim().slice(0, 6000);
+  return parts.join(" ").replace(/\s+/g, " ").trim().slice(0, TEXT_LIMIT);
 }
 
 /**
@@ -93,9 +109,9 @@ export async function getRequestDocumentContext(requestId) {
       const buf = await fetchBuffer(url);
 
       if (mime.includes("text/plain") || name.endsWith(".txt") || name.endsWith(".csv")) {
-        text = buf.toString("utf-8").slice(0, 6000);
+        text = buf.toString("utf-8").slice(0, TEXT_LIMIT);
       } else if (mime.includes("pdf") || name.endsWith(".pdf")) {
-        text = extractPdfText(buf);
+        text = await extractPdfText(buf);
         if (!text) text = "[PDF content could not be extracted — only file name is available]";
       } else if (
         mime.includes("wordprocessingml") ||
