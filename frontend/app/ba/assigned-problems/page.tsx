@@ -276,86 +276,119 @@ export default function AssignedRequestsPage() {
           </div>
         </div>
       ) : (
-        <div className="space-y-3">
-          {requests.map((request) => {
-            const p  = priorityConfig[request.priority] ?? priorityConfig.Medium;
-            const sc = statusConfig[request.status] ?? { color: "text-slate-500", bg: "bg-slate-100" };
-            return (
-              <div
-                key={request.id}
-                className="group relative flex items-center gap-5 rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all duration-150"
-              >
-                {/* Priority stripe */}
-                <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${p.dot}`} />
-
-                {/* Request number */}
-                <div className="shrink-0 hidden sm:block">
-                  <span className="font-mono text-xs font-bold text-indigo-400 bg-indigo-50 rounded-lg px-2.5 py-1.5 whitespace-nowrap">
-                    {request.req_number}
-                  </span>
-                </div>
-
-                {/* Main info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                    <span className="font-mono text-xs font-bold text-indigo-400 sm:hidden">{request.req_number}</span>
-                    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
-                      {p.icon} {request.priority}
-                    </span>
-                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${sc.color} ${sc.bg}`}>
-                      {request.status}
-                    </span>
-                    {request.attachments.length > 0 && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
-                        <Paperclip className="size-3" /> {request.attachments.length}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50">
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Req #</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400">Title</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Priority</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden lg:table-cell">Category</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden md:table-cell">Stakeholder</th>
+                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden xl:table-cell">Submitted</th>
+                <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Docs</th>
+                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map((request, idx) => {
+                const p  = priorityConfig[request.priority] ?? priorityConfig.Medium;
+                const sc = statusConfig[request.status] ?? { color: "text-slate-500", bg: "bg-slate-100" };
+                return (
+                  <tr
+                    key={request.id}
+                    className={`border-b border-slate-100 hover:bg-indigo-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
+                  >
+                    {/* Req number */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className="font-mono text-xs font-bold text-indigo-500 bg-indigo-50 rounded-md px-2 py-1">
+                        {request.req_number}
                       </span>
-                    )}
-                  </div>
-                  <p className="text-sm font-semibold text-slate-900 leading-snug truncate" title={request.title}>
-                    {request.title}
-                  </p>
-                  <div className="mt-1.5 flex items-center gap-3 flex-wrap">
-                    <span className="flex items-center gap-1 text-xs text-slate-400">
-                      <User className="size-3" />
-                      {request.stakeholder_name || request.stakeholder_email.split("@")[0]}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs text-slate-400">
-                      <Tag className="size-3" />
-                      {request.category}
-                    </span>
-                    <span className="flex items-center gap-1 text-xs text-slate-400">
-                      <Calendar className="size-3" />
-                      {new Date(request.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                    </span>
-                  </div>
-                </div>
+                    </td>
 
-                {/* Actions */}
-                <div className="flex shrink-0 items-center gap-2">
-                  <button
-                    onClick={() => { setSelectedRequest(request); setDetailsOpen(true); }}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-600 hover:border-slate-300 hover:bg-slate-50 transition-all"
-                  >
-                    <Eye className="size-3.5 text-slate-400" />
-                    Details
-                  </button>
-                  <button
-                    onClick={() => openDiscussion(request, userId, userName)}
-                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-200 hover:shadow-indigo-300"
-                  >
-                    <MessageSquare className="size-3.5" />
-                    Discuss
-                    <ChevronRight className="size-3.5 opacity-70" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+                    {/* Title */}
+                    <td className="px-4 py-3.5 max-w-[280px]">
+                      <p className="text-sm font-semibold text-slate-800 truncate" title={request.title}>
+                        {request.title}
+                      </p>
+                    </td>
 
-          {/* Row count */}
-          <p className="pt-1 text-right text-xs text-slate-400 font-medium">
-            {requests.length} request{requests.length !== 1 ? "s" : ""} total
-          </p>
+                    {/* Priority */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
+                        {p.icon}{request.priority}
+                      </span>
+                    </td>
+
+                    {/* Status */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${sc.color} ${sc.bg}`}>
+                        {request.status}
+                      </span>
+                    </td>
+
+                    {/* Category */}
+                    <td className="px-4 py-3.5 hidden lg:table-cell">
+                      <span className="text-xs text-slate-500">{request.category}</span>
+                    </td>
+
+                    {/* Stakeholder */}
+                    <td className="px-4 py-3.5 hidden md:table-cell whitespace-nowrap">
+                      <span className="text-xs text-slate-500">
+                        {request.stakeholder_name || request.stakeholder_email.split("@")[0]}
+                      </span>
+                    </td>
+
+                    {/* Date */}
+                    <td className="px-4 py-3.5 hidden xl:table-cell whitespace-nowrap">
+                      <span className="text-xs text-slate-400">
+                        {new Date(request.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                      </span>
+                    </td>
+
+                    {/* Attachments */}
+                    <td className="px-4 py-3.5 text-center">
+                      {request.attachments.length > 0 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                          <Paperclip className="size-3" />{request.attachments.length}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-300">—</span>
+                      )}
+                    </td>
+
+                    {/* Actions */}
+                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => { setSelectedRequest(request); setDetailsOpen(true); }}
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                        >
+                          <Eye className="size-3.5 text-slate-400" />
+                          Details
+                        </button>
+                        <button
+                          onClick={() => openDiscussion(request, userId, userName)}
+                          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-100"
+                        >
+                          <MessageSquare className="size-3.5" />
+                          Discuss
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          {/* Footer row */}
+          <div className="border-t border-slate-100 bg-slate-50 px-5 py-2.5">
+            <p className="text-xs font-medium text-slate-400">
+              {requests.length} request{requests.length !== 1 ? "s" : ""} total
+            </p>
+          </div>
         </div>
       )}
 
@@ -375,32 +408,50 @@ export default function AssignedRequestsPage() {
           </button>
 
           {showPrev && (
-            <div className="space-y-2 pl-2">
-              {prevRequests.map((r) => {
-                const p = priorityConfig[r.priority as Priority] ?? priorityConfig.Medium;
-                return (
-                  <div key={r.id} className="flex items-center gap-4 rounded-2xl border border-amber-200 bg-amber-50/50 px-5 py-4">
-                    <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${p.dot}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="font-mono text-xs font-bold text-amber-600 bg-amber-100 rounded px-2 py-0.5">{r.req_number}</span>
-                        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
-                          {p.icon} {r.priority}
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-slate-800 truncate">{r.title}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        {r.stakeholder_name || r.stakeholder_email.split("@")[0]} · {new Date(r.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
-                      </p>
-                    </div>
-                    <div className="shrink-0">
-                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
-                        → {r.new_ba_name || r.new_ba_email || "Reassigned"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="rounded-2xl border border-amber-200 bg-white overflow-hidden">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-amber-100 bg-amber-50">
+                    <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-amber-600">Req #</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-amber-600">Title</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-amber-600 hidden sm:table-cell">Priority</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-amber-600 hidden md:table-cell">Stakeholder</th>
+                    <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-amber-600 hidden lg:table-cell">Date</th>
+                    <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-widest text-amber-600">Reassigned To</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prevRequests.map((r, idx) => {
+                    const p = priorityConfig[r.priority as Priority] ?? priorityConfig.Medium;
+                    return (
+                      <tr key={r.id} className={`border-b border-amber-100 last:border-0 ${idx % 2 === 0 ? "bg-white" : "bg-amber-50/30"}`}>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className="font-mono text-xs font-bold text-amber-600 bg-amber-100 rounded-md px-2 py-1">{r.req_number}</span>
+                        </td>
+                        <td className="px-4 py-3 max-w-[240px]">
+                          <p className="text-sm font-semibold text-slate-700 truncate">{r.title}</p>
+                        </td>
+                        <td className="px-4 py-3 hidden sm:table-cell whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
+                            {p.icon}{r.priority}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          <span className="text-xs text-slate-500">{r.stakeholder_name || r.stakeholder_email.split("@")[0]}</span>
+                        </td>
+                        <td className="px-4 py-3 hidden lg:table-cell whitespace-nowrap">
+                          <span className="text-xs text-slate-400">{new Date(r.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+                            → {r.new_ba_name || r.new_ba_email || "Reassigned"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
