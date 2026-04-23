@@ -27,7 +27,8 @@ import {
   CheckCircle2, XCircle, ClipboardList, ShieldAlert, Zap,
   Tag, BarChart3, Copy, Check, FileText, ExternalLink,
   AlertTriangle, GitBranch, Pencil, Save, RefreshCw,
-  MoreHorizontal, CornerUpLeft, Trash2,
+  MoreHorizontal, CornerUpLeft, Trash2, ScanSearch,
+  TrendingUp, List, Shield, Database, Link2, Quote,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
@@ -59,6 +60,48 @@ interface ImportantMessage {
   message_text: string;
   sender_name: string;
   marked_at: string;
+  marked_by_name?: string;
+  marked_by_email?: string;
+}
+
+interface DocRequirement {
+  requirement: string;
+  type?: string;
+  priority_hint?: string;
+  verbatim_source?: string;
+}
+interface DocBusinessRule { rule: string; verbatim_source?: string; }
+interface DocProcessStep { step_number?: number; step: string; actor?: string; system?: string; outcome?: string; }
+interface DocDataRequirement { field: string; description?: string; format?: string; constraints?: string; }
+interface DocIntegration { system: string; direction?: string; description?: string; technical_details?: string; }
+interface DocQuantData { metric: string; value: string; context?: string; }
+interface DocStakeholder { name_or_role: string; involvement?: string; }
+
+interface DocumentAnalysisResult {
+  document_types?: string[];
+  document_summary?: string;
+  relevance_score?: number;
+  problem_statement_in_doc?: string;
+  current_state?: string;
+  desired_state?: string;
+  key_requirements?: DocRequirement[];
+  business_rules?: DocBusinessRule[];
+  process_steps?: DocProcessStep[];
+  data_requirements?: DocDataRequirement[];
+  integrations?: DocIntegration[];
+  quantitative_data?: DocQuantData[];
+  compliance_requirements?: string[];
+  stakeholders?: DocStakeholder[];
+  technical_specifications?: string[];
+  assumptions_in_document?: string[];
+  constraints?: string[];
+  risks_mentioned?: string[];
+  open_questions?: string[];
+  key_verbatim_quotes?: string[];
+  documents_analyzed?: { name: string; sizeKb: number; mime?: string }[];
+  analyzed_at?: string;
+  no_documents?: boolean;
+  message?: string;
 }
 
 interface ReadinessCheck { label: string; pass: boolean; }
@@ -235,8 +278,7 @@ function MessageActionsDropdown({
             Reply
           </button>
 
-          {isOwn && (
-            <button
+          <button
               onClick={() => { onMarkImportant(); setOpen(false); }}
               className={`${row} ${
                 isImportant
@@ -249,7 +291,6 @@ function MessageActionsDropdown({
                 : <Bookmark className="size-3 shrink-0 text-amber-500" />}
               {isImportant ? "Unmark Key Point" : "Mark as Key Point"}
             </button>
-          )}
 
           {isOwn && (
             <>
@@ -298,6 +339,287 @@ function CustomMessage() {
   );
 }
 
+// ── Document Intelligence Modal ───────────────────────────────────────────────
+function DocumentIntelligenceModal({
+  result,
+  onClose,
+  onProceed,
+}: {
+  result: DocumentAnalysisResult;
+  onClose: () => void;
+  onProceed: () => void;
+}) {
+  const score = result.relevance_score ?? 0;
+  const scoreColor = score >= 70 ? "text-emerald-600" : score >= 40 ? "text-amber-600" : "text-rose-600";
+  const scoreBg    = score >= 70 ? "bg-emerald-50 border-emerald-200" : score >= 40 ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200";
+
+  const Section = ({ icon, label, children, accent = "indigo" }: { icon: React.ReactNode; label: string; children: React.ReactNode; accent?: string }) => (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <span className={`text-${accent}-500`}>{icon}</span>
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">{label}</p>
+      </div>
+      {children}
+    </div>
+  );
+
+  const Pill = ({ text, color = "slate" }: { text: string; color?: string }) => (
+    <span className={`rounded-full border border-${color}-100 bg-${color}-50 px-2.5 py-0.5 text-[11px] font-medium text-${color}-700`}>
+      {text}
+    </span>
+  );
+
+  return (
+    <div className="absolute inset-0 z-40 flex flex-col bg-white">
+      <div className="h-0.5 w-full bg-gradient-to-r from-teal-400 via-emerald-500 to-cyan-400 shrink-0" />
+
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal-400 to-emerald-600 shadow-md">
+            <ScanSearch className="size-5 text-white" />
+          </div>
+          <div>
+            <p className="text-base font-bold text-slate-800">Document Intelligence</p>
+            <p className="text-[11px] text-slate-400">
+              AI extracted {result.documents_analyzed?.length ?? 0} document{(result.documents_analyzed?.length ?? 0) !== 1 ? "s" : ""} · {(result.key_requirements || []).length} requirements found
+            </p>
+          </div>
+        </div>
+        <button onClick={onClose} className="flex size-9 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:bg-slate-100">
+          <X className="size-4" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+
+        {/* Relevance + doc types */}
+        <div className={`rounded-2xl border p-5 ${scoreBg}`}>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500">Document Relevance Score</p>
+            <span className={`text-2xl font-black ${scoreColor}`}>{score}/100</span>
+          </div>
+          <div className="w-full rounded-full bg-slate-200 h-2 mb-3">
+            <div className={`h-2 rounded-full ${score >= 70 ? "bg-emerald-500" : score >= 40 ? "bg-amber-500" : "bg-rose-500"}`} style={{ width: `${score}%` }} />
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {(result.document_types || []).map((t, i) => <Pill key={i} text={t} color="teal" />)}
+            {(result.documents_analyzed || []).map((d, i) => (
+              <span key={i} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] text-slate-500">
+                {d.name} ({d.sizeKb}KB)
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Summary */}
+        {result.document_summary && (
+          <div className="rounded-2xl border border-teal-100 bg-gradient-to-br from-teal-50 to-emerald-50 p-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-teal-600 mb-2">Document Summary</p>
+            <p className="text-sm leading-relaxed text-slate-700">{result.document_summary}</p>
+          </div>
+        )}
+
+        {/* Current State / Desired State */}
+        {(result.current_state || result.desired_state) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {result.current_state && (
+              <div className="rounded-2xl border border-rose-100 bg-rose-50/50 p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-rose-500 mb-2">Current State (As-Is)</p>
+                <p className="text-xs leading-relaxed text-slate-700">{result.current_state}</p>
+              </div>
+            )}
+            {result.desired_state && (
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                <p className="text-xs font-bold uppercase tracking-widest text-emerald-600 mb-2">Desired State (To-Be)</p>
+                <p className="text-xs leading-relaxed text-slate-700">{result.desired_state}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Key Requirements */}
+        {(result.key_requirements || []).length > 0 && (
+          <Section icon={<ClipboardList className="size-4" />} label={`Requirements (${result.key_requirements!.length})`} accent="indigo">
+            <ul className="space-y-2">
+              {result.key_requirements!.map((r, i) => (
+                <li key={i} className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
+                  <div className="flex items-start gap-2">
+                    <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[9px] font-bold text-indigo-600">{i + 1}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-slate-700">{r.requirement}</p>
+                      <div className="flex gap-1.5 mt-1 flex-wrap">
+                        {r.type && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">{r.type}</span>}
+                        {r.priority_hint && <span className="rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-600">{r.priority_hint}</span>}
+                      </div>
+                      {r.verbatim_source && (
+                        <p className="mt-1 text-[10px] italic text-slate-400">"{r.verbatim_source}"</p>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {/* Process Steps */}
+        {(result.process_steps || []).length > 0 && (
+          <Section icon={<List className="size-4" />} label="Process Flow from Documents" accent="violet">
+            <ol className="space-y-2">
+              {result.process_steps!.map((s, i) => (
+                <li key={i} className="flex items-start gap-3">
+                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] font-bold text-violet-600">{s.step_number ?? i + 1}</span>
+                  <div>
+                    <p className="text-xs text-slate-700">{s.step}</p>
+                    <p className="text-[10px] text-slate-400">{s.actor && `By: ${s.actor}`}{s.system && ` · System: ${s.system}`}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          </Section>
+        )}
+
+        {/* Quantitative Data */}
+        {(result.quantitative_data || []).length > 0 && (
+          <Section icon={<TrendingUp className="size-4" />} label="Numbers & SLAs" accent="amber">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {result.quantitative_data!.map((q, i) => (
+                <div key={i} className="rounded-xl border border-amber-100 bg-amber-50/50 px-3 py-2">
+                  <p className="text-[10px] font-semibold text-amber-700 uppercase">{q.metric}</p>
+                  <p className="text-sm font-bold text-slate-800">{q.value}</p>
+                  {q.context && <p className="text-[10px] text-slate-500">{q.context}</p>}
+                </div>
+              ))}
+            </div>
+          </Section>
+        )}
+
+        {/* Business Rules */}
+        {(result.business_rules || []).length > 0 && (
+          <Section icon={<Shield className="size-4" />} label="Business Rules" accent="rose">
+            <ul className="space-y-1.5">
+              {result.business_rules!.map((r, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-rose-100 text-[9px] font-bold text-rose-600">{i + 1}</span>
+                  <span className="text-xs text-slate-700">{r.rule}</span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {/* Integrations */}
+        {(result.integrations || []).length > 0 && (
+          <Section icon={<Link2 className="size-4" />} label="Integrations" accent="cyan">
+            <ul className="space-y-2">
+              {result.integrations!.map((int, i) => (
+                <li key={i} className="rounded-xl border border-cyan-100 bg-cyan-50/40 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-cyan-700">{int.system}</span>
+                    {int.direction && <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[9px] font-semibold text-cyan-600">{int.direction}</span>}
+                  </div>
+                  {int.description && <p className="text-[11px] text-slate-600 mt-0.5">{int.description}</p>}
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {/* Compliance */}
+        {(result.compliance_requirements || []).length > 0 && (
+          <Section icon={<Shield className="size-4" />} label="Compliance & Regulatory" accent="emerald">
+            <ul className="space-y-1.5">
+              {result.compliance_requirements!.map((c, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <CheckCircle2 className="size-3.5 mt-0.5 shrink-0 text-emerald-500" />
+                  <span className="text-xs text-slate-700">{c}</span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {/* Open Questions */}
+        {(result.open_questions || []).length > 0 && (
+          <Section icon={<AlertTriangle className="size-4" />} label="Open Questions (BA must resolve)" accent="amber">
+            <ol className="space-y-1.5">
+              {result.open_questions!.map((q, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[9px] font-bold text-amber-700">{i + 1}</span>
+                  <span className="text-xs text-slate-700">{q}</span>
+                </li>
+              ))}
+            </ol>
+          </Section>
+        )}
+
+        {/* Key Verbatim Quotes */}
+        {(result.key_verbatim_quotes || []).length > 0 && (
+          <Section icon={<Quote className="size-4" />} label="Key Verbatim Quotes" accent="violet">
+            <ul className="space-y-2">
+              {result.key_verbatim_quotes!.map((q, i) => (
+                <li key={i} className="rounded-xl border-l-2 border-violet-300 bg-violet-50/50 pl-3 pr-2 py-2">
+                  <p className="text-xs italic text-slate-600">"{q}"</p>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {/* Constraints & Risks */}
+        {((result.constraints || []).length > 0 || (result.risks_mentioned || []).length > 0) && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {(result.constraints || []).length > 0 && (
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mb-3">Constraints</p>
+                <ul className="space-y-1.5">
+                  {result.constraints!.map((c, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <XCircle className="size-3.5 mt-0.5 shrink-0 text-slate-400" />
+                      <span className="text-xs text-slate-700">{c}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(result.risks_mentioned || []).length > 0 && (
+              <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-widest text-rose-500 mb-3">Risks Mentioned</p>
+                <ul className="space-y-1.5">
+                  {result.risks_mentioned!.map((r, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <AlertTriangle className="size-3.5 mt-0.5 shrink-0 text-rose-400" />
+                      <span className="text-xs text-slate-700">{r}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="shrink-0 border-t border-slate-100 p-4 flex gap-2">
+        <button
+          onClick={onClose}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+        >
+          <ArrowLeft className="size-3.5" /> Back to Discussion
+        </button>
+        <button
+          onClick={onProceed}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-600 to-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:from-teal-500 hover:to-emerald-500"
+        >
+          <ChevronRight className="size-4" /> Proceed to Completeness Check
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Analysis Result Modal ─────────────────────────────────────────────────────
 function AnalysisModal({
   analysis,
@@ -306,6 +628,10 @@ function AnalysisModal({
   generatingBrd,
   brdSuccess,
   isBA,
+  // Stage 0 — document intelligence
+  onAnalyzeDocs,
+  analyzingDocs,
+  docAnalysis,
   // Staged flow props
   onCheckCompleteness,
   checkingCompleteness,
@@ -323,6 +649,9 @@ function AnalysisModal({
   generatingBrd?: boolean;
   brdSuccess?: boolean;
   isBA?: boolean;
+  onAnalyzeDocs?: () => void;
+  analyzingDocs?: boolean;
+  docAnalysis?: DocumentAnalysisResult | null;
   onCheckCompleteness?: () => void;
   checkingCompleteness?: boolean;
   completenessResult?: CompletenessResult | null;
@@ -543,6 +872,7 @@ function AnalysisModal({
           {!brdSuccess && (
             <div className="flex items-center gap-1 mb-1">
               {[
+                { label: "Docs", done: !!docAnalysis && !docAnalysis.no_documents },
                 { label: "Check", done: !!completenessResult },
                 { label: "Scope", done: scopeApproved },
                 { label: "Workflow", done: workflowApproved },
@@ -570,6 +900,28 @@ function AnalysisModal({
             </div>
           ) : (
             <div className="space-y-2">
+              {/* Stage 0: Document Intelligence */}
+              <button
+                onClick={onAnalyzeDocs}
+                disabled={analyzingDocs}
+                className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
+                  docAnalysis && !docAnalysis.no_documents
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : docAnalysis?.no_documents
+                    ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
+                    : "border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100"
+                } disabled:opacity-50`}
+              >
+                {analyzingDocs
+                  ? <><Loader2 className="size-3.5 animate-spin" /> Analysing documents…</>
+                  : docAnalysis && !docAnalysis.no_documents
+                  ? <><CheckCircle2 className="size-3.5" /> Documents analysed — {(docAnalysis.key_requirements || []).length} requirements extracted</>
+                  : docAnalysis?.no_documents
+                  ? <><FileText className="size-3.5" /> No documents attached</>
+                  : <><ScanSearch className="size-3.5" /> Stage 0: Analyse Attached Documents</>
+                }
+              </button>
+
               {/* Step 1: Completeness check */}
               <button
                 onClick={onCheckCompleteness}
@@ -1058,15 +1410,9 @@ function KeyPointsPanel({
               <Bookmark className="size-6 text-slate-300" />
             </div>
             <p className="text-sm font-semibold text-slate-500">No key points yet</p>
-            {isBA ? (
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
-                Hover over any message and click the bookmark icon to mark it as a key point.
-              </p>
-            ) : (
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
-                Key points marked by the BA will appear here.
-              </p>
-            )}
+            <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
+              Hover over any message and click ··· → Mark as Key Point to flag it for the BRD.
+            </p>
           </div>
         ) : (
           messages.map((msg, i) => (
@@ -1077,12 +1423,20 @@ function KeyPointsPanel({
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-xs leading-relaxed text-slate-700">{msg.message_text}</p>
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] font-semibold text-slate-500">{msg.sender_name}</span>
                     <span className="text-[10px] text-slate-300">·</span>
                     <span className="text-[10px] text-slate-400">
                       {new Date(msg.marked_at).toLocaleDateString([], { month: "short", day: "numeric" })}
                     </span>
+                    {msg.marked_by_name && (
+                      <>
+                        <span className="text-[10px] text-slate-300">·</span>
+                        <span className="text-[10px] text-indigo-500">
+                          ★ {msg.marked_by_name}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1113,7 +1467,7 @@ function KeyPointsPanel({
           </button>
         )}
         <p className="text-center text-[10px] text-slate-400">
-          {isBA ? "Analyses marked messages to extract BRD-ready insights" : "Only the BA can generate the analysis"}
+          {isBA ? "Analyses marked messages to extract BRD-ready insights" : "Anyone can mark key points — the BA uses them to generate the BRD"}
         </p>
       </div>
     </div>
@@ -1135,6 +1489,10 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [generatingBrd, setGeneratingBrd] = useState(false);
   const [brdSuccess, setBrdSuccess] = useState(false);
+  // Stage 0 — document intelligence
+  const [docAnalysis, setDocAnalysis] = useState<DocumentAnalysisResult | null>(null);
+  const [analyzingDocs, setAnalyzingDocs] = useState(false);
+  const [showDocAnalysisModal, setShowDocAnalysisModal] = useState(false);
   // Staged flow state
   const [checkingCompleteness, setCheckingCompleteness] = useState(false);
   const [completenessResult, setCompletenessResult] = useState<CompletenessResult | null>(null);
@@ -1228,6 +1586,22 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
       setGeneratingBrd(false);
     }
   }, [request.id, isBA, analysis]);
+
+  const runDocumentAnalysis = useCallback(async () => {
+    if (!isBA) return;
+    setAnalyzingDocs(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      const res = await fetch(`${API}/api/stream/channels/${request.id}/analyze-documents`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setDocAnalysis(data);
+      if (!data.no_documents) setShowDocAnalysisModal(true);
+    } catch { alert("Document analysis failed. Please try again."); }
+    finally { setAnalyzingDocs(false); }
+  }, [request.id, isBA]);
 
   const runCompletenessCheck = useCallback(async () => {
     if (!isBA) return;
@@ -1460,14 +1834,17 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
           ) : null}
 
           {/* Analysis result — full overlay with staged flow */}
-          {analysis && !showCompletenessModal && !showScopeModal && !showWorkflowModal && (
+          {analysis && !showCompletenessModal && !showScopeModal && !showWorkflowModal && !showDocAnalysisModal && (
             <AnalysisModal
               analysis={analysis}
-              onClose={() => { setAnalysis(null); setBrdSuccess(false); setCompletenessResult(null); setScopeApproved(false); setWorkflowApproved(false); }}
+              onClose={() => { setAnalysis(null); setBrdSuccess(false); setCompletenessResult(null); setScopeApproved(false); setWorkflowApproved(false); setDocAnalysis(null); }}
               onGenerateBrd={generateDraftBRD}
               generatingBrd={generatingBrd}
               brdSuccess={brdSuccess}
               isBA={isBA}
+              onAnalyzeDocs={runDocumentAnalysis}
+              analyzingDocs={analyzingDocs}
+              docAnalysis={docAnalysis}
               onCheckCompleteness={runCompletenessCheck}
               checkingCompleteness={checkingCompleteness}
               completenessResult={completenessResult}
@@ -1477,6 +1854,15 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
               onGenerateWorkflow={runGenerateWorkflow}
               generatingWorkflow={generatingWorkflow}
               workflowApproved={workflowApproved}
+            />
+          )}
+
+          {/* Document Intelligence modal — Stage 0 */}
+          {analysis && showDocAnalysisModal && docAnalysis && !docAnalysis.no_documents && (
+            <DocumentIntelligenceModal
+              result={docAnalysis}
+              onClose={() => { setShowDocAnalysisModal(false); setAnalysis(null); }}
+              onProceed={() => setShowDocAnalysisModal(false)}
             />
           )}
 

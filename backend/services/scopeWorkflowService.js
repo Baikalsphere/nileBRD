@@ -11,6 +11,7 @@
  */
 
 import OpenAI from "openai";
+import { formatDocumentAnalysisForContext } from "./documentAnalysisService.js";
 
 const azureClient = new OpenAI({
   apiKey:         process.env.AZURE_OPENAI_API_KEY,
@@ -30,7 +31,7 @@ CRITICAL RULES — violating any of these is a failure:
 5. Never reference content from your training data about similar projects. Only this project's discussion matters.`;
 
 // ─── Shared context builder ───────────────────────────────────────────────────
-function buildSourceContext(messages, requestInfo, documentText) {
+function buildSourceContext(messages, requestInfo, documentText, documentAnalysis = null) {
   const submittedDate = requestInfo.created_at
     ? new Date(requestInfo.created_at).toLocaleDateString("en-GB", {
         day: "2-digit", month: "long", year: "numeric",
@@ -41,9 +42,10 @@ function buildSourceContext(messages, requestInfo, documentText) {
     .map((m, i) => `[${i + 1}] ${m.sender_name || "Unknown"}: ${m.message_text}`)
     .join("\n");
 
-  const docBlock = documentText
-    ? `\n\n=== ATTACHED DOCUMENTS ===\n${documentText}`
-    : "";
+  // Use structured document intelligence if available — more signal-dense than raw text
+  const docBlock = documentAnalysis
+    ? `\n\n${formatDocumentAnalysisForContext(documentAnalysis)}`
+    : (documentText ? `\n\n=== ATTACHED DOCUMENTS ===\n${documentText}` : "");
 
   return (
     `=== PROJECT CONTEXT ===\n` +
@@ -52,7 +54,7 @@ function buildSourceContext(messages, requestInfo, documentText) {
     `Priority: ${requestInfo.priority || "Not specified"}\n` +
     `Submitted: ${submittedDate}\n` +
     (requestInfo.description ? `Problem Statement: ${requestInfo.description}\n` : "") +
-    `\n=== DISCUSSION (marked key messages) ===\n${msgBlock}` +
+    `\n=== DISCUSSION (marked key messages) ===\n${msgBlock || "(No messages marked — derive from documents and request context)"}` +
     docBlock
   );
 }
@@ -62,8 +64,8 @@ function buildSourceContext(messages, requestInfo, documentText) {
  * Analyses the discussion and returns what is present, what is missing,
  * and specific questions the BA should resolve before drafting the BRD.
  */
-export async function checkCompleteness(messages, requestInfo, documentText = "") {
-  const source = buildSourceContext(messages, requestInfo, documentText);
+export async function checkCompleteness(messages, requestInfo, documentText = "", documentAnalysis = null) {
+  const source = buildSourceContext(messages, requestInfo, documentText, documentAnalysis);
 
   const prompt =
     `${source}\n\n` +
@@ -122,8 +124,8 @@ export async function checkCompleteness(messages, requestInfo, documentText = ""
  * Extracts a structured scope definition from the discussion.
  * Returns in-scope items, out-of-scope items, ambiguities, and critical gaps.
  */
-export async function generateScope(messages, requestInfo, documentText = "") {
-  const source = buildSourceContext(messages, requestInfo, documentText);
+export async function generateScope(messages, requestInfo, documentText = "", documentAnalysis = null) {
+  const source = buildSourceContext(messages, requestInfo, documentText, documentAnalysis);
 
   const prompt =
     `${source}\n\n` +
@@ -174,8 +176,8 @@ export async function generateScope(messages, requestInfo, documentText = "") {
  * Generates a step-by-step business process workflow from the BA-approved scope.
  * Steps are grounded strictly in the discussion — no generic filler steps added.
  */
-export async function generateWorkflow(approvedScope, messages, requestInfo, documentText = "") {
-  const source     = buildSourceContext(messages, requestInfo, documentText);
+export async function generateWorkflow(approvedScope, messages, requestInfo, documentText = "", documentAnalysis = null) {
+  const source     = buildSourceContext(messages, requestInfo, documentText, documentAnalysis);
   const scopeItems = (approvedScope.in_scope || []).map((s, i) => `${i + 1}. ${s}`).join("\n");
 
   const prompt =

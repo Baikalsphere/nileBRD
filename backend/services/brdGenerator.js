@@ -12,6 +12,7 @@
  */
 
 import OpenAI from "openai";
+import { formatDocumentAnalysisForContext } from "./documentAnalysisService.js";
 
 const azureClient = new OpenAI({
   apiKey:         process.env.AZURE_OPENAI_API_KEY,
@@ -94,7 +95,7 @@ CRITICAL RULES — violating any of these is a failure:
 6. Every statement you write must be traceable to at least one message or document in the source context.`;
 
 // ─── Source context builder ───────────────────────────────────────────────────
-function buildFullSourceContext(messages, requestInfo, documentText = "") {
+function buildFullSourceContext(messages, requestInfo, documentText = "", documentAnalysis = null) {
   const submittedDate = requestInfo.created_at
     ? new Date(requestInfo.created_at).toLocaleDateString("en-GB", {
         day: "2-digit", month: "long", year: "numeric",
@@ -105,7 +106,10 @@ function buildFullSourceContext(messages, requestInfo, documentText = "") {
     ? messages.map((m, i) => `[${i + 1}] ${m.sender_name || "Participant"}: ${m.message_text}`).join("\n")
     : "(No messages provided)";
 
-  const docBlock = documentText ? `\n\n=== ATTACHED DOCUMENTS ===\n${documentText}` : "";
+  // Prefer structured document analysis over raw text — it's more signal-dense and AI-friendly
+  const docBlock = documentAnalysis
+    ? `\n\n${formatDocumentAnalysisForContext(documentAnalysis)}`
+    : (documentText ? `\n\n=== ATTACHED DOCUMENTS ===\n${documentText}` : "");
 
   return (
     `=== PROJECT CONTEXT ===\n` +
@@ -712,17 +716,18 @@ export async function enhanceBRD(existingBrd, improvementComments, requestInfo) 
 export async function generateBRD(
   analysis,
   requestInfo,
-  messages      = [],
-  documentText  = "",
+  messages         = [],
+  documentText     = "",
   approvedWorkflow = null,
-  approvedScope    = null
+  approvedScope    = null,
+  documentAnalysis = null
 ) {
   const now        = new Date();
   const versionNum = "0.1";
   const docId      = `BRD-${requestInfo.req_number || requestInfo.id || "DRAFT"}-v${versionNum}`;
 
-  // Build the single source-of-truth context for all grounded AI calls
-  const sourceContext = buildFullSourceContext(messages, requestInfo, documentText);
+  // Build the single source-of-truth context — includes structured document intelligence if available
+  const sourceContext = buildFullSourceContext(messages, requestInfo, documentText, documentAnalysis);
 
   // Use BA-approved scope items from Stage 2 (most authoritative source)
   const inScope    = approvedScope?.in_scope    || [];
@@ -770,8 +775,10 @@ export async function generateBRD(
       priority:        requestInfo.priority || "Medium",
       generated_at:    now.toISOString(),
       effective_date:  now.toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" }),
-      ai_models:       [`Azure OpenAI ${process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o"} (grounded generation)`],
-      source_messages: analysis.message_count,
+      ai_models:              [`Azure OpenAI ${process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4o"} (grounded generation)`],
+      source_messages:        analysis.message_count,
+      documents_analyzed:     documentAnalysis ? (documentAnalysis.documents_analyzed || []).map((d) => d.name) : [],
+      document_intelligence:  documentAnalysis != null,
     },
     sections: {
       executive_summary: {
