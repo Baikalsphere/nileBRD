@@ -564,19 +564,25 @@ router.post("/channels/:requestId/generate-brd", authenticateToken, async (req, 
       [requestId]
     );
 
-    // Fetch documents and approved workflow to ground the BRD
-    const [docs, wfRows] = await Promise.all([
+    // Fetch documents, approved workflow, and approved scope to ground the BRD
+    const [docs, wfRows, scopeRows] = await Promise.all([
       getRequestDocumentContext(requestId).catch(() => null),
       pool.query(
         `SELECT content FROM brd_workflows WHERE request_id = $1 AND status = 'approved'
          ORDER BY created_at DESC LIMIT 1`,
         [requestId]
       ),
+      pool.query(
+        `SELECT content FROM brd_scopes WHERE request_id = $1 AND status = 'approved'
+         ORDER BY created_at DESC LIMIT 1`,
+        [requestId]
+      ),
     ]);
-    const documentText = docs ? formatDocumentContext(docs) : "";
-    const approvedWorkflow = wfRows.rows[0]?.content || null;
+    const documentText    = docs ? formatDocumentContext(docs) : "";
+    const approvedWorkflow = wfRows.rows[0]?.content   || null;
+    const approvedScope    = scopeRows.rows[0]?.content || null;
 
-    const brd = await generateBRD(analysis, reqRows[0], msgs, documentText, approvedWorkflow);
+    const brd = await generateBRD(analysis, reqRows[0], msgs, documentText, approvedWorkflow, approvedScope);
 
     // Upsert: one draft BRD per request (replace previous draft)
     const { rows: existing } = await pool.query(
