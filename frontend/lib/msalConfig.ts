@@ -6,7 +6,7 @@ export const msalConfig: Configuration = {
     authority: `https://login.microsoftonline.com/${process.env.NEXT_PUBLIC_AZURE_TENANT_ID}`,
     redirectUri:
       process.env.NEXT_PUBLIC_REDIRECT_URI ||
-      (typeof window !== "undefined" ? window.location.origin : "http://localhost:3001"),
+      (typeof window !== "undefined" ? `${window.location.origin}/auth-redirect` : "http://localhost:3001/auth-redirect"),
   },
   cache: {
     cacheLocation: "sessionStorage",
