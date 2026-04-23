@@ -688,6 +688,7 @@ function LoginPage() {
               type="button"
               onClick={handleAzureLogin}
               disabled={azureLoading}
+              suppressHydrationWarning
               className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-600/60 bg-slate-800/60 px-4 py-3 text-sm font-semibold text-slate-200 shadow-sm transition-all hover:border-blue-500/50 hover:bg-slate-700/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {azureLoading ? (
