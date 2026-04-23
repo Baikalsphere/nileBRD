@@ -5,6 +5,7 @@ import { analyseKeyPoints } from "../services/brdAgent.js";
 import { generateBRD, enhanceBRD } from "../services/brdGenerator.js";
 import { checkCompleteness, generateScope, generateWorkflow } from "../services/scopeWorkflowService.js";
 import { getRequestDocumentContext, formatDocumentContext } from "../services/documentParser.js";
+import { analyzeDocumentsForBRD, formatDocumentAnalysisForContext } from "../services/documentAnalysisService.js";
 import { generateFRD } from "../services/frdGenerator.js";
 import { generateTestCases } from "../services/testCaseGenerator.js";
 import {
@@ -180,13 +181,16 @@ router.get("/users", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/stream/channels/:requestId/important — list important messages
+// GET /api/stream/channels/:requestId/important — list important messages (all roles)
 router.get("/channels/:requestId/important", authenticateToken, async (req, res) => {
   try {
     const { requestId } = req.params;
     const { rows } = await pool.query(
-      `SELECT stream_message_id, message_text, sender_name, marked_at
-       FROM important_messages WHERE request_id = $1 ORDER BY marked_at ASC`,
+      `SELECT im.stream_message_id, im.message_text, im.sender_name, im.marked_at,
+              u.name AS marked_by_name, u.email AS marked_by_email
+       FROM important_messages im
+       LEFT JOIN users u ON u.id = im.marked_by
+       WHERE im.request_id = $1 ORDER BY im.marked_at ASC`,
       [requestId]
     );
     res.json({ messages: rows });
@@ -226,6 +230,80 @@ router.delete("/channels/:requestId/important/:messageId", authenticateToken, as
   } catch (err) {
     console.error("Unmark important error:", err);
     res.status(500).json({ message: "Failed to unmark message" });
+  }
+});
+
+// POST /api/stream/channels/:requestId/analyze-documents — AI document intelligence extraction (BA only)
+router.post("/channels/:requestId/analyze-documents", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
+    const { requestId } = req.params;
+
+    // Ensure the document_analyses table exists (idempotent)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS document_analyses (
+        id          SERIAL PRIMARY KEY,
+        request_id  INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+        content     JSONB   NOT NULL,
+        analyzed_by INTEGER REFERENCES users(id),
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(request_id)
+      )
+    `);
+
+    const { rows: reqRows } = await pool.query(
+      `SELECT r.id, r.title, r.description, r.category, r.priority
+       FROM requests r WHERE r.id = $1`,
+      [requestId]
+    );
+    if (!reqRows.length) return res.status(404).json({ message: "Request not found" });
+
+    const docs = await getRequestDocumentContext(requestId).catch(() => null);
+    if (!docs || docs.length === 0) {
+      return res.json({ no_documents: true, message: "No documents are attached to this request." });
+    }
+
+    const analysis = await analyzeDocumentsForBRD(docs, reqRows[0]);
+    if (!analysis) return res.status(500).json({ message: "Document analysis failed." });
+
+    // Persist / replace the analysis for this request
+    await pool.query(
+      `INSERT INTO document_analyses (request_id, content, analyzed_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (request_id) DO UPDATE
+         SET content = EXCLUDED.content, analyzed_by = EXCLUDED.analyzed_by, created_at = NOW()`,
+      [requestId, JSON.stringify(analysis), req.user.id]
+    );
+
+    res.json(analysis);
+  } catch (err) {
+    console.error("Document analysis error:", err);
+    res.status(500).json({ message: "Document analysis failed", detail: err.message });
+  }
+});
+
+// GET /api/stream/channels/:requestId/document-analysis — fetch stored document analysis
+router.get("/channels/:requestId/document-analysis", authenticateToken, async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS document_analyses (
+        id          SERIAL PRIMARY KEY,
+        request_id  INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+        content     JSONB   NOT NULL,
+        analyzed_by INTEGER REFERENCES users(id),
+        created_at  TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(request_id)
+      )
+    `);
+    const { rows } = await pool.query(
+      `SELECT content, created_at FROM document_analyses WHERE request_id = $1 LIMIT 1`,
+      [requestId]
+    );
+    if (!rows.length) return res.json(null);
+    res.json({ ...rows[0].content, _analyzed_at: rows[0].created_at });
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch document analysis" });
   }
 });
 
@@ -284,10 +362,14 @@ router.post("/channels/:requestId/completeness-check", authenticateToken, async 
       [requestId]
     );
 
-    const docs = await getRequestDocumentContext(requestId).catch(() => null);
-    const documentText = docs ? formatDocumentContext(docs) : "";
+    const [docs, docAnalysisRows] = await Promise.all([
+      getRequestDocumentContext(requestId).catch(() => null),
+      pool.query(`SELECT content FROM document_analyses WHERE request_id = $1 LIMIT 1`, [requestId]).catch(() => ({ rows: [] })),
+    ]);
+    const documentText    = docs ? formatDocumentContext(docs) : "";
+    const documentAnalysis = docAnalysisRows.rows[0]?.content || null;
 
-    const result = await checkCompleteness(msgs, reqRows[0], documentText);
+    const result = await checkCompleteness(msgs, reqRows[0], documentText, documentAnalysis);
     res.json(result);
   } catch (err) {
     console.error("Completeness check error:", err);
@@ -314,10 +396,14 @@ router.post("/channels/:requestId/generate-scope", authenticateToken, async (req
       [requestId]
     );
 
-    const docs = await getRequestDocumentContext(requestId).catch(() => null);
-    const documentText = docs ? formatDocumentContext(docs) : "";
+    const [docs, docAnalysisRows] = await Promise.all([
+      getRequestDocumentContext(requestId).catch(() => null),
+      pool.query(`SELECT content FROM document_analyses WHERE request_id = $1 LIMIT 1`, [requestId]).catch(() => ({ rows: [] })),
+    ]);
+    const documentText    = docs ? formatDocumentContext(docs) : "";
+    const documentAnalysis = docAnalysisRows.rows[0]?.content || null;
 
-    const scopeContent = await generateScope(msgs, reqRows[0], documentText);
+    const scopeContent = await generateScope(msgs, reqRows[0], documentText, documentAnalysis);
 
     // Persist as draft scope
     const { rows: saved } = await pool.query(
@@ -410,8 +496,12 @@ router.post("/channels/:requestId/generate-workflow", authenticateToken, async (
       [requestId]
     );
 
-    const docs = await getRequestDocumentContext(requestId).catch(() => null);
-    const documentText = docs ? formatDocumentContext(docs) : "";
+    const [docs, docAnalysisRows] = await Promise.all([
+      getRequestDocumentContext(requestId).catch(() => null),
+      pool.query(`SELECT content FROM document_analyses WHERE request_id = $1 LIMIT 1`, [requestId]).catch(() => ({ rows: [] })),
+    ]);
+    const documentText    = docs ? formatDocumentContext(docs) : "";
+    const documentAnalysis = docAnalysisRows.rows[0]?.content || null;
 
     // Use provided scope or fall back to the saved approved scope
     let approvedScope = scope_content;
@@ -427,7 +517,7 @@ router.post("/channels/:requestId/generate-workflow", authenticateToken, async (
       return res.status(400).json({ message: "No approved scope found. Please generate and approve a scope first." });
     }
 
-    const workflowContent = await generateWorkflow(approvedScope, msgs, reqRows[0], documentText);
+    const workflowContent = await generateWorkflow(approvedScope, msgs, reqRows[0], documentText, documentAnalysis);
 
     // Persist as draft workflow
     const { rows: scopeRow } = await pool.query(
@@ -564,8 +654,8 @@ router.post("/channels/:requestId/generate-brd", authenticateToken, async (req, 
       [requestId]
     );
 
-    // Fetch documents, approved workflow, and approved scope to ground the BRD
-    const [docs, wfRows, scopeRows] = await Promise.all([
+    // Fetch documents, approved workflow, approved scope, and stored document analysis
+    const [docs, wfRows, scopeRows, docAnalysisRows] = await Promise.all([
       getRequestDocumentContext(requestId).catch(() => null),
       pool.query(
         `SELECT content FROM brd_workflows WHERE request_id = $1 AND status = 'approved'
@@ -577,12 +667,17 @@ router.post("/channels/:requestId/generate-brd", authenticateToken, async (req, 
          ORDER BY created_at DESC LIMIT 1`,
         [requestId]
       ),
+      pool.query(
+        `SELECT content FROM document_analyses WHERE request_id = $1 LIMIT 1`,
+        [requestId]
+      ).catch(() => ({ rows: [] })),
     ]);
-    const documentText    = docs ? formatDocumentContext(docs) : "";
-    const approvedWorkflow = wfRows.rows[0]?.content   || null;
-    const approvedScope    = scopeRows.rows[0]?.content || null;
+    const documentText     = docs ? formatDocumentContext(docs) : "";
+    const approvedWorkflow  = wfRows.rows[0]?.content        || null;
+    const approvedScope     = scopeRows.rows[0]?.content     || null;
+    const documentAnalysis  = docAnalysisRows.rows[0]?.content || null;
 
-    const brd = await generateBRD(analysis, reqRows[0], msgs, documentText, approvedWorkflow, approvedScope);
+    const brd = await generateBRD(analysis, reqRows[0], msgs, documentText, approvedWorkflow, approvedScope, documentAnalysis);
 
     // Upsert: one draft BRD per request (replace previous draft)
     const { rows: existing } = await pool.query(

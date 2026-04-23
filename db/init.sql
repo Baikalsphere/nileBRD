@@ -107,6 +107,17 @@ CREATE TABLE IF NOT EXISTS important_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_important_messages_request ON important_messages(request_id);
 
+-- Document intelligence analyses (Stage 0 of BRD flow)
+CREATE TABLE IF NOT EXISTS document_analyses (
+  id          SERIAL PRIMARY KEY,
+  request_id  INTEGER NOT NULL REFERENCES requests(id) ON DELETE CASCADE,
+  content     JSONB   NOT NULL,
+  analyzed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_document_analyses_request ON document_analyses(request_id);
+
 -- BRD documents
 CREATE TABLE IF NOT EXISTS brd_documents (
   id           SERIAL PRIMARY KEY,
