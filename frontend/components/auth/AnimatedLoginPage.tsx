@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/Label";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Eye, EyeOff, Mail, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getMsalInstance, loginRequest } from "@/lib/msalConfig";
+
+const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
 
 interface PupilProps {
@@ -175,6 +178,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [azureLoading, setAzureLoading] = useState(false);
   const [mouseX, setMouseX] = useState<number>(0);
   const [mouseY, setMouseY] = useState<number>(0);
   const [isPurpleBlinking, setIsPurpleBlinking] = useState(false);
@@ -326,6 +330,47 @@ function LoginPage() {
       console.error(err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAzureLogin = async () => {
+    setAzureLoading(true);
+    setError("");
+    try {
+      const msal = getMsalInstance();
+      await msal.initialize();
+      const authResult = await msal.loginPopup(loginRequest);
+      const tokenResult = await msal.acquireTokenSilent({
+        scopes: loginRequest.scopes,
+        account: authResult.account,
+      });
+      const response = await fetch(`${API}/api/auth/azure-login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: tokenResult.accessToken }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(data.message || "Azure login failed.");
+        return;
+      }
+      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("userRole", data.user.role);
+      localStorage.setItem("userEmail", data.user.email);
+      const rolePortals: Record<string, string> = {
+        stakeholder: "/stakeholder",
+        ba: "/ba",
+        it: "/it",
+        it_member: "/it-member",
+      };
+      window.location.href = rolePortals[data.user.role] || "/stakeholder";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!msg.includes("user_cancelled") && !msg.includes("popup_window_error")) {
+        setError("Microsoft sign-in failed. Please try again.");
+      }
+    } finally {
+      setAzureLoading(false);
     }
   };
 
@@ -622,15 +667,48 @@ function LoginPage() {
             )}
 
             {/* Submit Button */}
-            <ButtonShadcn 
-              type="submit" 
-              className="w-full h-12 text-base font-semibold bg-white text-slate-900 hover:bg-slate-100 shadow-lg transition-all" 
-              size="lg" 
+            <ButtonShadcn
+              type="submit"
+              className="w-full h-12 text-base font-semibold bg-white text-slate-900 hover:bg-slate-100 shadow-lg transition-all"
+              size="lg"
               disabled={isLoading}
             >
               {isLoading ? "Signing in..." : "Sign In"}
             </ButtonShadcn>
           </form>
+
+          {/* ── Microsoft / Azure AD SSO ── */}
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-700/60" />
+              <span className="text-xs font-medium text-slate-500">or</span>
+              <div className="h-px flex-1 bg-slate-700/60" />
+            </div>
+            <button
+              type="button"
+              onClick={handleAzureLogin}
+              disabled={azureLoading}
+              className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-600/60 bg-slate-800/60 px-4 py-3 text-sm font-semibold text-slate-200 shadow-sm transition-all hover:border-blue-500/50 hover:bg-slate-700/70 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {azureLoading ? (
+                <svg className="size-5 animate-spin text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21" className="size-5 shrink-0">
+                  <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                  <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                  <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                  <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+                </svg>
+              )}
+              {azureLoading ? "Connecting to Microsoft…" : "Sign in with Microsoft"}
+            </button>
+            <p className="text-center text-[11px] text-slate-500">
+              Microsoft sign-in creates a Stakeholder account automatically
+            </p>
+          </div>
 
           {/* Footer Links */}
           <div className="flex items-center justify-center gap-4 text-xs text-slate-500 mt-8">

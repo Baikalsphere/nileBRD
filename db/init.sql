@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NOT NULL,
   role          VARCHAR(50)  NOT NULL CHECK (role IN ('stakeholder','ba','it','it_member')),
   name          VARCHAR(255),
+  auth_provider VARCHAR(20) DEFAULT 'local',
   is_it_manager BOOLEAN DEFAULT FALSE,
   created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
