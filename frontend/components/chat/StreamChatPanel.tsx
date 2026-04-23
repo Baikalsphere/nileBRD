@@ -864,123 +864,172 @@ function AnalysisModal({
         </div>
       </div>
 
-      {/* Footer — Staged BRD Flow */}
+      {/* Footer — BRD Generation Pipeline */}
       {isBA && (
-        <div className="shrink-0 border-t border-slate-100 px-6 py-4 bg-slate-50/60 space-y-3">
-
-          {/* Stage progress bar */}
-          {!brdSuccess && (
-            <div className="flex items-center gap-1 mb-1">
-              {[
-                { label: "Docs", done: !!docAnalysis && !docAnalysis.no_documents },
-                { label: "Check", done: !!completenessResult },
-                { label: "Scope", done: scopeApproved },
-                { label: "Workflow", done: workflowApproved },
-                { label: "BRD", done: brdSuccess },
-              ].map((s, i, arr) => (
-                <div key={s.label} className="flex items-center gap-1 flex-1">
-                  <div className={`flex h-5 flex-1 items-center justify-center rounded-full text-[10px] font-bold border ${s.done ? "bg-emerald-500 border-emerald-500 text-white" : "bg-white border-slate-200 text-slate-400"}`}>
-                    {s.done ? <CheckCircle2 className="size-3" /> : s.label}
-                  </div>
-                  {i < arr.length - 1 && <div className={`h-px w-2 ${s.done ? "bg-emerald-400" : "bg-slate-200"}`} />}
-                </div>
-              ))}
-            </div>
-          )}
-
+        <div className="shrink-0 border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white">
           {brdSuccess ? (
-            <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-emerald-600" />
-                <span className="text-sm font-medium text-emerald-700">BRD Draft created successfully!</span>
+            <div className="px-5 py-4">
+              <div className="flex items-center gap-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-4">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 shadow-sm shadow-emerald-200">
+                  <CheckCircle2 className="size-5 text-white" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-emerald-800">BRD Draft created successfully!</p>
+                  <p className="text-xs text-emerald-600/80 mt-0.5">Ready for stakeholder review and sign-off.</p>
+                </div>
+                <a href="/ba/brd-management" className="flex shrink-0 items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-colors">
+                  View BRD <ExternalLink className="size-3.5" />
+                </a>
               </div>
-              <a href="/ba/brd-management" className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors">
-                View BRD <ExternalLink className="size-3" />
-              </a>
             </div>
           ) : (
-            <div className="space-y-2">
-              {/* Stage 0: Document Intelligence */}
-              <button
-                onClick={onAnalyzeDocs}
-                disabled={analyzingDocs}
-                className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
-                  docAnalysis && !docAnalysis.no_documents
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : docAnalysis?.no_documents
-                    ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                    : "border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100"
-                } disabled:opacity-50`}
-              >
-                {analyzingDocs
-                  ? <><Loader2 className="size-3.5 animate-spin" /> Analysing documents…</>
-                  : docAnalysis && !docAnalysis.no_documents
-                  ? <><CheckCircle2 className="size-3.5" /> Documents analysed — {(docAnalysis.key_requirements || []).length} requirements extracted</>
+            <div className="px-5 py-4 space-y-2">
+              {/* Pipeline label + progress indicators */}
+              <div className="flex items-center justify-between pb-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">BRD Generation Pipeline</p>
+                <div className="flex items-center gap-1">
+                  {[
+                    !!docAnalysis && !docAnalysis.no_documents,
+                    !!completenessResult,
+                    scopeApproved ?? false,
+                    workflowApproved ?? false,
+                    false,
+                  ].map((done, i) => (
+                    <div key={i} className={`h-1 rounded-full transition-all ${done ? "w-6 bg-emerald-400" : "w-4 bg-slate-200"}`} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 0 — Document Intelligence */}
+              <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 transition-all ${
+                docAnalysis && !docAnalysis.no_documents
+                  ? "border-emerald-200 bg-emerald-50/70"
                   : docAnalysis?.no_documents
-                  ? <><FileText className="size-3.5" /> No documents attached</>
-                  : <><ScanSearch className="size-3.5" /> Stage 0: Analyse Attached Documents</>
+                  ? "border-slate-100 bg-slate-50"
+                  : "border-teal-200 bg-teal-50/50"
+              }`}>
+                <div className={`flex size-7 shrink-0 items-center justify-center rounded-lg font-black text-xs ${
+                  docAnalysis && !docAnalysis.no_documents ? "bg-emerald-500 text-white" : "bg-teal-100 text-teal-700"
+                }`}>
+                  {docAnalysis && !docAnalysis.no_documents ? <CheckCircle2 className="size-3.5" /> : "0"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-bold leading-snug ${docAnalysis?.no_documents ? "text-slate-400" : docAnalysis ? "text-emerald-700" : "text-slate-700"}`}>
+                    {docAnalysis?.no_documents ? "No documents attached" : docAnalysis ? `Docs analysed — ${(docAnalysis.key_requirements || []).length} requirements found` : "Analyse Attached Documents"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                    {docAnalysis?.no_documents ? "Proceed without document analysis" : "AI extracts requirements, rules & data from uploaded files"}
+                  </p>
+                </div>
+                {!docAnalysis?.no_documents && (
+                  <button onClick={onAnalyzeDocs} disabled={analyzingDocs}
+                    className={`flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all disabled:opacity-50 ${
+                      docAnalysis ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-teal-600 text-white hover:bg-teal-500"
+                    }`}>
+                    {analyzingDocs ? <Loader2 className="size-3 animate-spin" /> : docAnalysis ? <RefreshCw className="size-3" /> : <ScanSearch className="size-3" />}
+                    <span>{analyzingDocs ? "Scanning…" : docAnalysis ? "Re-scan" : "Scan"}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Step 1 — Completeness Check */}
+              <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 transition-all ${
+                completenessResult ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-amber-50/50"
+              }`}>
+                <div className={`flex size-7 shrink-0 items-center justify-center rounded-lg font-black text-xs ${
+                  completenessResult ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-700"
+                }`}>
+                  {completenessResult ? <CheckCircle2 className="size-3.5" /> : "1"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-bold leading-snug ${completenessResult ? "text-emerald-700" : "text-slate-700"}`}>
+                    {completenessResult ? `Completeness: ${completenessResult.completeness_score}% — ${completenessResult.readiness}` : "Check Discussion Completeness"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                    {completenessResult ? `${completenessResult.missing.length} gap${completenessResult.missing.length !== 1 ? "s" : ""} identified` : "AI scores coverage and lists missing requirements"}
+                  </p>
+                </div>
+                <button onClick={onCheckCompleteness} disabled={checkingCompleteness}
+                  className={`flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all disabled:opacity-50 ${
+                    completenessResult ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : "bg-amber-500 text-white hover:bg-amber-400"
+                  }`}>
+                  {checkingCompleteness ? <Loader2 className="size-3 animate-spin" /> : completenessResult ? <RefreshCw className="size-3" /> : <AlertTriangle className="size-3" />}
+                  <span>{checkingCompleteness ? "Checking…" : completenessResult ? "Re-check" : "Check"}</span>
+                </button>
+              </div>
+
+              {/* Step 2 — Scope Definition */}
+              <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 transition-all ${
+                scopeApproved
+                  ? "border-emerald-200 bg-emerald-50/70"
+                  : completenessResult
+                  ? "border-indigo-200 bg-indigo-50/50"
+                  : "border-slate-100 bg-slate-50 opacity-60"
+              }`}>
+                <div className={`flex size-7 shrink-0 items-center justify-center rounded-lg font-black text-xs ${
+                  scopeApproved ? "bg-emerald-500 text-white" : completenessResult ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-400"
+                }`}>
+                  {scopeApproved ? <CheckCircle2 className="size-3.5" /> : "2"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-bold leading-snug ${scopeApproved ? "text-emerald-700" : completenessResult ? "text-slate-700" : "text-slate-400"}`}>
+                    {scopeApproved ? "Scope approved ✓" : "Define & Approve Scope"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                    {scopeApproved ? "In-scope items locked for BRD generation" : completenessResult ? "AI maps in-scope, out-of-scope & ambiguities" : "Complete Step 1 first"}
+                  </p>
+                </div>
+                <button onClick={onGenerateScope} disabled={!completenessResult || generatingScope}
+                  className={`flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all disabled:opacity-40 ${
+                    scopeApproved ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : completenessResult ? "bg-indigo-600 text-white hover:bg-indigo-500" : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  }`}>
+                  {generatingScope ? <Loader2 className="size-3 animate-spin" /> : scopeApproved ? <RefreshCw className="size-3" /> : <GitBranch className="size-3" />}
+                  <span>{generatingScope ? "Generating…" : scopeApproved ? "Revise" : "Define"}</span>
+                </button>
+              </div>
+
+              {/* Step 3 — Workflow */}
+              <div className={`flex items-center gap-3 rounded-xl border px-3.5 py-3 transition-all ${
+                workflowApproved
+                  ? "border-emerald-200 bg-emerald-50/70"
+                  : scopeApproved
+                  ? "border-violet-200 bg-violet-50/50"
+                  : "border-slate-100 bg-slate-50 opacity-60"
+              }`}>
+                <div className={`flex size-7 shrink-0 items-center justify-center rounded-lg font-black text-xs ${
+                  workflowApproved ? "bg-emerald-500 text-white" : scopeApproved ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-400"
+                }`}>
+                  {workflowApproved ? <CheckCircle2 className="size-3.5" /> : "3"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-bold leading-snug ${workflowApproved ? "text-emerald-700" : scopeApproved ? "text-slate-700" : "text-slate-400"}`}>
+                    {workflowApproved ? "Workflow approved ✓" : "Generate & Approve Workflow"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 leading-tight mt-0.5">
+                    {workflowApproved ? "Process steps confirmed by BA" : scopeApproved ? "AI builds step-by-step process from approved scope" : "Complete Step 2 first"}
+                  </p>
+                </div>
+                <button onClick={onGenerateWorkflow} disabled={!scopeApproved || generatingWorkflow}
+                  className={`flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold transition-all disabled:opacity-40 ${
+                    workflowApproved ? "bg-slate-100 text-slate-600 hover:bg-slate-200" : scopeApproved ? "bg-violet-600 text-white hover:bg-violet-500" : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  }`}>
+                  {generatingWorkflow ? <Loader2 className="size-3 animate-spin" /> : workflowApproved ? <RefreshCw className="size-3" /> : <List className="size-3" />}
+                  <span>{generatingWorkflow ? "Generating…" : workflowApproved ? "Revise" : "Build"}</span>
+                </button>
+              </div>
+
+              {/* Step 4 — Generate BRD */}
+              <button onClick={onGenerateBrd} disabled={!workflowApproved || generatingBrd}
+                className={`flex w-full items-center justify-center gap-2.5 rounded-xl px-4 py-3.5 text-sm font-bold transition-all mt-1 ${
+                  workflowApproved
+                    ? "bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-200 hover:shadow-lg hover:shadow-indigo-300 hover:from-violet-500 hover:via-indigo-500 hover:to-blue-500"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                } disabled:opacity-50`}>
+                {generatingBrd
+                  ? <><Loader2 className="size-4 animate-spin" /> Building BRD with AI…</>
+                  : <><Sparkles className="size-4" /> Step 4: Generate Draft BRD <ChevronRight className="size-4 opacity-70" /></>
                 }
               </button>
-
-              {/* Step 1: Completeness check */}
-              <button
-                onClick={onCheckCompleteness}
-                disabled={checkingCompleteness}
-                className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
-                  completenessResult
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700"
-                } disabled:opacity-50`}
-              >
-                {checkingCompleteness ? <Loader2 className="size-3.5 animate-spin" /> : completenessResult ? <CheckCircle2 className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
-                {checkingCompleteness ? "Checking completeness…" : completenessResult ? `Completeness: ${completenessResult.completeness_score}% — ${completenessResult.readiness}` : "Step 1: Check Discussion Completeness"}
-              </button>
-
-              {/* Step 2: Define scope */}
-              <button
-                onClick={onGenerateScope}
-                disabled={!completenessResult || generatingScope}
-                className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
-                  scopeApproved
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : completenessResult
-                    ? "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                    : "border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed"
-                } disabled:opacity-50`}
-              >
-                {generatingScope ? <Loader2 className="size-3.5 animate-spin" /> : scopeApproved ? <CheckCircle2 className="size-3.5" /> : <GitBranch className="size-3.5" />}
-                {generatingScope ? "Generating scope…" : scopeApproved ? "Scope approved ✓" : "Step 2: Define & Approve Scope"}
-              </button>
-
-              {/* Step 3: Generate workflow */}
-              <button
-                onClick={onGenerateWorkflow}
-                disabled={!scopeApproved || generatingWorkflow}
-                className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
-                  workflowApproved
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                    : scopeApproved
-                    ? "border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
-                    : "border-slate-100 bg-slate-50 text-slate-300 cursor-not-allowed"
-                } disabled:opacity-50`}
-              >
-                {generatingWorkflow ? <Loader2 className="size-3.5 animate-spin" /> : workflowApproved ? <CheckCircle2 className="size-3.5" /> : <RefreshCw className="size-3.5" />}
-                {generatingWorkflow ? "Generating workflow…" : workflowApproved ? "Workflow approved ✓" : "Step 3: Generate & Approve Workflow"}
-              </button>
-
-              {/* Step 4: Generate BRD — only enabled after workflow approved */}
-              <button
-                onClick={onGenerateBrd}
-                disabled={!workflowApproved || generatingBrd}
-                className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition-all hover:shadow-lg hover:shadow-indigo-300 hover:from-violet-500 hover:via-indigo-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {generatingBrd ? <><Loader2 className="size-4 animate-spin" /> Building BRD with AI…</> : <><FileText className="size-4" /> Step 4: Generate Draft BRD <ChevronRight className="size-4 opacity-70" /></>}
-              </button>
-              {!workflowApproved && (
-                <p className="text-center text-[10px] text-slate-400">
-                  Complete all steps above to unlock BRD generation
-                </p>
-              )}
             </div>
           )}
         </div>
@@ -1081,18 +1130,25 @@ function CompletenessModal({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-slate-100 p-4 flex gap-2">
-        {onBackToChat && (
-          <button
-            onClick={onBackToChat}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-          >
-            <ArrowLeft className="size-3.5" /> Back to Discussion
-          </button>
+      <div className="shrink-0 border-t border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 py-4 space-y-2">
+        {score < 65 && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-amber-100 bg-amber-50 px-3.5 py-2.5">
+            <AlertTriangle className="size-4 shrink-0 mt-0.5 text-amber-500" />
+            <p className="text-xs text-amber-700">Score is below 65% — consider gathering more information before proceeding to scope definition.</p>
+          </div>
         )}
-        <button onClick={onClose} className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-700">
-          <ChevronRight className="size-4" /> Proceed to Scope
-        </button>
+        <div className="flex gap-2">
+          {onBackToChat && (
+            <button onClick={onBackToChat}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+              <ArrowLeft className="size-3.5" /> Back to Discussion
+            </button>
+          )}
+          <button onClick={onClose}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-3 text-sm font-bold text-white shadow-sm shadow-indigo-200 hover:from-indigo-500 hover:to-violet-500 transition-all">
+            Proceed to Scope <ChevronRight className="size-4" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1206,29 +1262,21 @@ function ScopeModal({
         )}
       </div>
 
-      <div className="shrink-0 border-t border-slate-100 p-4 space-y-2">
+      <div className="shrink-0 border-t border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 py-4 space-y-2">
         {onBackToChat && (
-          <button
-            onClick={onBackToChat}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"
-          >
+          <button onClick={onBackToChat}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors">
             <ArrowLeft className="size-3.5" /> Back to Discussion (gather more information)
           </button>
         )}
         <div className="flex gap-2">
-          <button
-            onClick={() => save(false)}
-            disabled={saving}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-          >
+          <button onClick={() => save(false)} disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
             <Save className="size-3.5" /> Save Draft
           </button>
-          <button
-            onClick={() => save(true)}
-            disabled={saving}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+          <button onClick={() => save(true)} disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-3 text-sm font-bold text-white shadow-sm shadow-emerald-200 hover:from-emerald-400 hover:to-teal-500 transition-all disabled:opacity-50">
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
             Approve Scope
           </button>
         </div>
@@ -1337,29 +1385,21 @@ function WorkflowModal({
         ))}
       </div>
 
-      <div className="shrink-0 border-t border-slate-100 p-4 space-y-2">
+      <div className="shrink-0 border-t border-slate-100 bg-gradient-to-b from-slate-50 to-white px-5 py-4 space-y-2">
         {onBackToChat && (
-          <button
-            onClick={onBackToChat}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50"
-          >
+          <button onClick={onBackToChat}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 transition-colors">
             <ArrowLeft className="size-3.5" /> Back to Discussion (gather more information)
           </button>
         )}
         <div className="flex gap-2">
-          <button
-            onClick={() => save(false)}
-            disabled={saving}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-          >
+          <button onClick={() => save(false)} disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
             <Save className="size-3.5" /> Save Draft
           </button>
-          <button
-            onClick={() => save(true)}
-            disabled={saving}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <CheckCircle2 className="size-3.5" />}
+          <button onClick={() => save(true)} disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-sm shadow-violet-200 hover:from-violet-500 hover:to-indigo-500 transition-all disabled:opacity-50">
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
             Approve Workflow
           </button>
         </div>
