@@ -23,7 +23,7 @@ import { MemberManagementPanel } from "./MemberManagementPanel";
 import { BrdReviewCard } from "./BrdReviewCard";
 import {
   ArrowLeft, Video, Users, Loader2, MessageSquare, AlertCircle,
-  Bookmark, BookmarkCheck, Sparkles, X, ChevronRight,
+  Bookmark, BookmarkCheck, Sparkles, X, ChevronRight, ChevronDown,
   CheckCircle2, XCircle, ClipboardList, ShieldAlert, Zap,
   Tag, BarChart3, Copy, Check, FileText, ExternalLink,
   AlertTriangle, GitBranch, Pencil, Save, RefreshCw,
@@ -663,6 +663,7 @@ function AnalysisModal({
   workflowApproved?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
+  const [pipelineOpen, setPipelineOpen] = useState(true);
 
   const copyToClipboard = () => {
     const text = [
@@ -867,8 +868,31 @@ function AnalysisModal({
       {/* Footer — BRD Generation Pipeline */}
       {isBA && (
         <div className="shrink-0 border-t border-slate-200 bg-gradient-to-b from-slate-50 to-white">
-          {brdSuccess ? (
-            <div className="px-5 py-4">
+
+          {/* Centered collapse toggle — always visible */}
+          <div className="flex items-center justify-center py-2">
+            <button
+              onClick={() => setPipelineOpen(v => !v)}
+              title={pipelineOpen ? "Collapse pipeline" : "Expand pipeline"}
+              className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-1.5 text-[11px] font-semibold text-slate-500 shadow-sm hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 transition-all"
+            >
+              <ChevronDown className={`size-3.5 transition-transform duration-200 ${pipelineOpen ? "rotate-180" : ""}`} />
+              <span>BRD Generation Pipeline</span>
+              <span className="flex items-center gap-0.5 ml-1">
+                {[
+                  !!docAnalysis && !docAnalysis.no_documents,
+                  !!completenessResult,
+                  scopeApproved ?? false,
+                  workflowApproved ?? false,
+                ].map((done, i) => (
+                  <span key={i} className={`inline-block h-1 w-3 rounded-full transition-all ${done ? "bg-emerald-400" : "bg-slate-200"}`} />
+                ))}
+              </span>
+            </button>
+          </div>
+
+          {pipelineOpen && (brdSuccess ? (
+            <div className="px-5 pb-4">
               <div className="flex items-center gap-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50 px-5 py-4">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 shadow-sm shadow-emerald-200">
                   <CheckCircle2 className="size-5 text-white" />
@@ -1031,7 +1055,7 @@ function AnalysisModal({
                 }
               </button>
             </div>
-          )}
+          ))}
         </div>
       )}
     </div>
