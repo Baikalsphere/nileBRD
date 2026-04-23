@@ -13,6 +13,7 @@ import {
   MessageSimple,
   Attachment,
   useMessageContext,
+  useChannelActionContext,
 } from "stream-chat-react";
 import "stream-chat-react/dist/css/v2/index.css";
 import "./stream-overrides.css";
@@ -130,7 +131,8 @@ const ChatUserCtx = createContext<CurrentUser | null>(null);
 
 // Rendered by Stream inside .str-chat__message-inner flex row — naturally sits next to the bubble
 function CustomMessageOptions() {
-  const { message, handleDelete, handleReply } = useMessageContext();
+  const { message, handleDelete } = useMessageContext();
+  const { openThread } = useChannelActionContext();
   const { importantIds, toggle } = useContext(ImportantCtx);
   const currentUser = useContext(ChatUserCtx);
   const isImportant = importantIds.has(message.id ?? "");
@@ -151,8 +153,8 @@ function CustomMessageOptions() {
         isImportant={isImportant}
         isOwn={isOwn}
         onMarkImportant={doMarkImportant}
-        onReply={() => handleReply?.()}
-        onDelete={() => handleDelete?.()}
+        onReply={() => openThread(message, { preventDefault: () => {} } as React.MouseEvent)}
+        onDelete={() => handleDelete?.({ preventDefault: () => {} } as React.MouseEvent)}
       />
     </div>
   );
