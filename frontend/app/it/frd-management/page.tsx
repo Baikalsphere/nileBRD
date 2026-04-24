@@ -8,6 +8,7 @@ import {
   Wand2, ArrowRight, Tag, Zap, AlertTriangle, Users, FileDown,
 } from "lucide-react";
 import { downloadFRDAsPDF } from "@/lib/pdfExport";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -278,7 +279,7 @@ export default function FrdManagementPage() {
   const fetchFrds = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/frd-documents`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setFrds(await res.json());
     } finally { setLoading(false); }
@@ -292,7 +293,7 @@ export default function FrdManagementPage() {
     setExpandedDoc(null);
     setLoadingDocId(id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/frd-documents/${id}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setExpandedDoc(await res.json());
     } finally { setLoadingDocId(null); }
@@ -301,7 +302,7 @@ export default function FrdManagementPage() {
   const generateTestCases = useCallback(async (frdId: number, docId: string) => {
     setGeneratingTcId(frdId);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/frd-documents/${frdId}/generate-test-cases`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

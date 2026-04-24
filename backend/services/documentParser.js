@@ -1,5 +1,5 @@
 /**
- * documentParser.js — Downloads and extracts text from request attachments stored in Supabase.
+ * documentParser.js — Reads and extracts text from request attachments stored on disk.
  *
  * Supports: PDF (via pdf-parse), DOCX (XML extraction), plain text, CSV.
  * All other formats return filename + size metadata so they still appear in the BRD context.
@@ -8,19 +8,13 @@
  */
 
 import { createRequire } from "module";
+import { promises as fs } from "fs";
 import pool from "../config/db.js";
-import { getSignedDownloadUrl } from "../config/storage.js";
+import { getFilePath } from "../storage.js";
 
 const require = createRequire(import.meta.url);
 
 const TEXT_LIMIT = 15000;
-
-async function fetchBuffer(signedUrl) {
-  const res = await fetch(signedUrl);
-  if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
-  const ab = await res.arrayBuffer();
-  return Buffer.from(ab);
-}
 
 /**
  * PDF text extraction using pdf-parse.
@@ -105,8 +99,7 @@ export async function getRequestDocumentContext(requestId) {
     const sizeKb = Math.round((att.size || 0) / 1024);
 
     try {
-      const url = await getSignedDownloadUrl(att.s3_key);
-      const buf = await fetchBuffer(url);
+      const buf = await fs.readFile(getFilePath(att.s3_key));
 
       if (mime.includes("text/plain") || name.endsWith(".txt") || name.endsWith(".csv")) {
         text = buf.toString("utf-8").slice(0, TEXT_LIMIT);

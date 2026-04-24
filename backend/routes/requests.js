@@ -1,7 +1,7 @@
 import express from "express";
 import multer from "multer";
 import pool from "../config/db.js";
-import { uploadFile, getSignedDownloadUrl, deleteFile } from "../config/storage.js";
+import { uploadFile, getFilePath, deleteFile } from "../storage.js";
 import { authenticateToken } from "../middleware/auth.js";
 import { addMemberToChannel, removeMemberFromChannel, postSystemActivity } from "../services/streamService.js";
 
@@ -236,7 +236,7 @@ router.post("/", authenticateToken, upload.array("attachments", 10), async (req,
 
     const request = reqResult.rows[0];
 
-    // Upload each file to Supabase Storage, store only the path key in DB
+    // Upload each file to local storage, store the relative path key in DB
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         const key = await uploadFile(file.buffer, file.originalname, file.mimetype, request.id);
@@ -261,18 +261,12 @@ router.post("/", authenticateToken, upload.array("attachments", 10), async (req,
   } catch (error) {
     await client.query("ROLLBACK");
 
-    // Clean up any Supabase Storage objects uploaded before the failure
     for (const key of uploadedKeys) {
       deleteFile(key).catch(() => {});
     }
 
-    const isStorageError = error.message?.includes("Storage upload failed") || error.message?.includes("storage");
     console.error("Submit request error:", error.message ?? error);
-    res.status(500).json({
-      message: isStorageError
-        ? "File upload failed — check storage configuration"
-        : "Error submitting request",
-    });
+    res.status(500).json({ message: "Error submitting request" });
   } finally {
     client.release();
   }
@@ -484,12 +478,55 @@ router.get("/shared-with-me", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/requests/attachment/:id — returns a presigned download URL (15 min expiry)
-// The client opens this URL directly — no file bytes pass through the server
+// POST /api/requests/:id/attachments — add files to an existing request (stakeholder only)
+router.post("/:id/attachments", authenticateToken, upload.array("attachments", 10), async (req, res) => {
+  const requestId = parseInt(req.params.id);
+  const uploadedKeys = [];
+
+  try {
+    const { rows } = await pool.query(
+      "SELECT id, stakeholder_id FROM requests WHERE id = $1",
+      [requestId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Request not found" });
+    if (rows[0].stakeholder_id !== req.user.id) {
+      return res.status(403).json({ message: "Not your request" });
+    }
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ message: "No files provided" });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const file of req.files) {
+        const key = await uploadFile(file.buffer, file.originalname, file.mimetype, requestId);
+        uploadedKeys.push(key);
+        await client.query(
+          "INSERT INTO request_attachments (request_id, original_name, mimetype, size, s3_key) VALUES ($1,$2,$3,$4,$5)",
+          [requestId, file.originalname, file.mimetype, file.size, key]
+        );
+      }
+      await client.query("COMMIT");
+      res.json({ message: "Attachments uploaded", count: req.files.length });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      for (const key of uploadedKeys) deleteFile(key).catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error("Attach files error:", error);
+    res.status(500).json({ message: "Error uploading attachments" });
+  }
+});
+
+// GET /api/requests/attachment/:id — streams the file directly from local storage
 router.get("/attachment/:id", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT original_name, mimetype, size, s3_key FROM request_attachments WHERE id = $1",
+      "SELECT original_name, mimetype, s3_key FROM request_attachments WHERE id = $1",
       [req.params.id]
     );
 
@@ -497,13 +534,15 @@ router.get("/attachment/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ message: "Attachment not found" });
     }
 
-    const { s3_key, original_name } = result.rows[0];
-    const url = await getSignedDownloadUrl(s3_key);
+    const { s3_key, original_name, mimetype } = result.rows[0];
+    const filePath = getFilePath(s3_key);
 
-    res.json({ url, filename: original_name });
+    res.setHeader("Content-Type", mimetype || "application/octet-stream");
+    res.setHeader("Content-Disposition", `attachment; filename="${original_name}"`);
+    res.sendFile(filePath);
   } catch (error) {
-    console.error("Presign error:", error);
-    res.status(500).json({ message: "Error generating download link" });
+    console.error("Attachment download error:", error);
+    res.status(500).json({ message: "Error downloading attachment" });
   }
 });
 

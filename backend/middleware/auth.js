@@ -4,7 +4,9 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key";
 
 export const authenticateToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1];
+  const bearerToken = authHeader && authHeader.split(" ")[1];
+  const cookieToken = req.cookies?.auth_token;
+  const token = bearerToken || cookieToken;
 
   if (!token) {
     return res.status(401).json({ message: "No token provided" });

@@ -10,6 +10,7 @@ import {
   AlertTriangle, Users, SendHorizonal, Star, Hourglass,
   ThumbsUp, MessageSquare, BarChart2, CircleDot,
 } from "lucide-react";
+import { ensureAuth, getUserMeta } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -43,9 +44,6 @@ interface BrdReviewItem {
 interface TrendPoint { label: string; count: number; }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function decodeToken(t: string) {
-  try { return JSON.parse(atob(t.split(".")[1])); } catch { return null; }
-}
 
 function greeting() {
   const h = new Date().getHours();
@@ -131,7 +129,7 @@ export default function StakeholderDashboardPage() {
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/requests/dashboard-stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -140,12 +138,9 @@ export default function StakeholderDashboardPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (token) {
-      const d = decodeToken(token);
-      if (d?.name) setUserName(d.name.split(" ")[0]);
-      else if (d?.email) setUserName(d.email.split("@")[0]);
-    }
+    const meta = getUserMeta();
+    if (meta?.name) setUserName(meta.name.split(" ")[0]);
+    else if (meta?.email) setUserName(meta.email.split("@")[0]);
     fetchStats();
   }, [fetchStats]);
 

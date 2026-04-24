@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { ensureAuth } from "@/lib/authGuard";
 import {
   FileText, CheckCircle2, XCircle, Clock, MessageSquare,
   ThumbsUp, AlertCircle, Loader2, ChevronRight, Sparkles,
@@ -52,7 +53,7 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
 
   const fetchReviews = useCallback(async () => {
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${attachment.brd_id}/reviews`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -77,7 +78,7 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
     if (status === "changes_requested" && !comment.trim()) return;
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       await fetch(`${API}/api/stream/brd-documents/${attachment.brd_id}/review`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -102,7 +103,7 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
 
     setOpeningPdf(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${attachment.brd_id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -121,7 +122,7 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
   const enhanceBrd = async () => {
     setEnhancing(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${attachment.brd_id}/enhance`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

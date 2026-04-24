@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
+import { ensureAuth, getUserMeta } from "@/lib/authGuard";
 import {
   Briefcase, FileText, CheckCircle2, Clock, AlertTriangle,
   TrendingUp, RefreshCw, ArrowRight, ChevronRight,
@@ -51,9 +52,6 @@ interface RecentBrd {
 interface TrendPoint { label: string; count: number; }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function decodeToken(t: string) {
-  try { return JSON.parse(atob(t.split(".")[1])); } catch { return null; }
-}
 
 function greeting() {
   const h = new Date().getHours();
@@ -144,7 +142,7 @@ export default function BADashboardPage() {
   const fetchStats = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/requests/dashboard-stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -153,12 +151,9 @@ export default function BADashboardPage() {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (token) {
-      const d = decodeToken(token);
-      if (d?.name) setUserName(d.name.split(" ")[0]);
-      else if (d?.email) setUserName(d.email.split("@")[0]);
-    }
+    const meta = getUserMeta();
+    if (meta?.name) setUserName(meta.name.split(" ")[0]);
+    else if (meta?.email) setUserName(meta.email.split("@")[0]);
     fetchStats();
   }, [fetchStats]);
 

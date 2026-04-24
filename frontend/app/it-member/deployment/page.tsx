@@ -5,11 +5,12 @@ import {
   Rocket, CheckCircle2, Clock, AlertTriangle, ArrowLeft,
   GitMerge, Server, Eye, FileText, RefreshCw,
 } from "lucide-react";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-function authHeader(): Record<string, string> {
-  const t = localStorage.getItem("authToken");
+async function authHeader(): Promise<Record<string, string>> {
+  const t = await ensureAuth();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
@@ -65,7 +66,8 @@ function DocList({ onSelect }: { onSelect: (doc: TcDocSummary) => void }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`${API}/api/stream/test-case-documents`, { headers: authHeader() })
+    authHeader()
+      .then(headers => fetch(`${API}/api/stream/test-case-documents`, { headers }))
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) setDocs(data);
@@ -133,9 +135,9 @@ function DeployDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => void }
 
   const showMsg = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 3500); };
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true);
-    fetch(`${API}/api/deployments/${doc.request_id}`, { headers: authHeader() })
+    fetch(`${API}/api/deployments/${doc.request_id}`, { headers: await authHeader() })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -162,7 +164,7 @@ function DeployDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => void }
     try {
       const r = await fetch(`${API}/api/deployments`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
         body: JSON.stringify({
           request_id: doc.request_id,
           tc_document_id: doc.id,
@@ -184,7 +186,7 @@ function DeployDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => void }
     try {
       const r = await fetch(`${API}/api/deployments/${id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
         body: JSON.stringify({ status, deployment_type: deployType, notes: notes[env] ?? "" }),
       });
       const d = await r.json();

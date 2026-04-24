@@ -7,6 +7,7 @@ import {
   Eye, ChevronRight, Calendar, User, Tag, FileText, X,
 } from "lucide-react";
 import { useDiscussionPanel } from "@/components/dashboard/DiscussionPanel";
+import { ensureAuth, getUserMeta } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -53,7 +54,7 @@ function DetailsModal({ request, isOpen, onClose }: { request: AssignedRequest |
   const downloadAttachment = async (att: Attachment) => {
     setDownloading(att.id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/requests/attachment/${att.id}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error("Failed to get download link");
       const { url } = await res.json();
@@ -172,15 +173,13 @@ export default function AssignedRequestsPage() {
   const { openDiscussion } = useDiscussionPanel();
 
   useEffect(() => {
-    try {
-      const t = localStorage.getItem("authToken");
-      if (t) { const d = JSON.parse(atob(t.split(".")[1])); setUserId(d.id); setUserName(d.name || d.email || "BA"); }
-    } catch { /* ignore */ }
+    const meta = getUserMeta();
+    if (meta) { setUserId(meta.id); setUserName(meta.name || meta.email || "BA"); }
   }, []);
 
   const fetchRequests = async () => {
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const [assignedRes, prevRes] = await Promise.all([
         fetch(`${API}/api/requests/assigned`,            { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API}/api/requests/previously-assigned`, { headers: { Authorization: `Bearer ${token}` } }),

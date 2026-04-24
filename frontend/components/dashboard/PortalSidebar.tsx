@@ -7,6 +7,7 @@ import { LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { iconMap } from "@/components/dashboard/IconMap";
 import { type NavItem } from "@/lib/mockData";
 import { cn } from "@/lib/utils";
+import { signOut } from "@/lib/authGuard";
 
 type SidebarProps = {
   title: string;
@@ -97,11 +98,11 @@ export function PortalSidebar({ title, navItems, collapsed, onToggle }: SidebarP
 
       {/* Logout */}
       <div className="border-t border-slate-100 px-2 py-3">
-        <Link
-          href="/"
+        <button
+          onClick={() => signOut()}
           title={collapsed ? "Logout" : undefined}
           className={cn(
-            "group flex items-center gap-3 rounded-xl px-2 py-2.5 text-sm font-medium text-slate-500 transition-all duration-150 hover:bg-rose-50 hover:text-rose-600",
+            "group flex w-full items-center gap-3 rounded-xl px-2 py-2.5 text-sm font-medium text-slate-500 transition-all duration-150 hover:bg-rose-50 hover:text-rose-600",
             collapsed ? "justify-center" : "",
           )}
         >
@@ -109,7 +110,7 @@ export function PortalSidebar({ title, navItems, collapsed, onToggle }: SidebarP
             <LogOut size={16} />
           </span>
           {!collapsed && <span>Logout</span>}
-        </Link>
+        </button>
       </div>
     </aside>
   );

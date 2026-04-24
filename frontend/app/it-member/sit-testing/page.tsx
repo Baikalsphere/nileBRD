@@ -8,6 +8,7 @@ import {
   Save, BarChart3, ListFilter, CalendarDays, TrendingUp,
   Lock, Unlock, Tag, Hash,
 } from "lucide-react";
+import { ensureAuth, getUserMeta } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL;
 
@@ -71,13 +72,12 @@ const PRIORITY_CFG: Record<string, string> = {
   Low:      "bg-slate-100 text-slate-600 border-slate-200",
 };
 
-function authHeader(): Record<string, string> {
-  const t = localStorage.getItem("authToken");
+async function authHeader(): Promise<Record<string, string>> {
+  const t = await ensureAuth();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 function getUserRole() {
-  try { const t = localStorage.getItem("authToken"); if (!t) return ""; return JSON.parse(atob(t.split(".")[1]))?.role ?? ""; }
-  catch { return ""; }
+  return getUserMeta()?.role ?? "";
 }
 
 function TypeBadge({ type }: { type: string }) {
@@ -102,7 +102,8 @@ function DocList({ onSelect }: { onSelect: (doc: TcDoc) => void }) {
   const [filter, setFilter]   = useState<"all" | "pending" | "released">("all");
 
   useEffect(() => {
-    fetch(`${API}/api/stream/test-case-documents`, { headers: authHeader() })
+    authHeader()
+      .then(headers => fetch(`${API}/api/stream/test-case-documents`, { headers }))
       .then(r => r.json())
       .then(d => Array.isArray(d) ? setDocs(d) : setError(d.message ?? "Failed to load"))
       .catch(() => setError("Network error"))
@@ -274,9 +275,9 @@ function SITDetail({ doc, onBack }: { doc: TcDoc; onBack: () => void }) {
   const [filterType, setFilterType] = useState("All");
   const [filterStatus, setFilterStatus] = useState<SITStatus | "All">("All");
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true);
-    fetch(`${API}/api/testing/sit/${doc.id}`, { headers: authHeader() })
+    fetch(`${API}/api/testing/sit/${doc.id}`, { headers: await authHeader() })
       .then(r => r.json())
       .then(d => {
         if (!d.sit_cases) { setError(d.message ?? "Failed to load SIT data"); return; }
@@ -301,7 +302,7 @@ function SITDetail({ doc, onBack }: { doc: TcDoc; onBack: () => void }) {
     try {
       const updates = data.sit_cases.map(tc => ({ test_case_id: tc.id, status: localStatuses[tc.id] ?? "Pending", remarks: localRemarks[tc.id] ?? "" }));
       const r = await fetch(`${API}/api/testing/sit/${doc.id}`, {
-        method: "PUT", headers: { "Content-Type": "application/json", ...authHeader() }, body: JSON.stringify({ updates }),
+        method: "PUT", headers: { "Content-Type": "application/json", ...await authHeader() }, body: JSON.stringify({ updates }),
       });
       if (r.ok) { setSaveMsg({ text: "Results saved", ok: true }); load(); }
       else { const d = await r.json(); setSaveMsg({ text: d.message ?? "Save failed", ok: false }); }
@@ -311,7 +312,7 @@ function SITDetail({ doc, onBack }: { doc: TcDoc; onBack: () => void }) {
   const releaseForUAT = async () => {
     setReleasing(true);
     try {
-      const r = await fetch(`${API}/api/testing/sit/${doc.id}/release`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeader() } });
+      const r = await fetch(`${API}/api/testing/sit/${doc.id}/release`, { method: "POST", headers: { "Content-Type": "application/json", ...await authHeader() } });
       const d = await r.json();
       if (r.ok) { load(); setRC(false); }
       else setSaveMsg({ text: d.message ?? "Release failed", ok: false });

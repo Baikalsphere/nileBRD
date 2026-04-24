@@ -18,6 +18,7 @@ import {
 import "stream-chat-react/dist/css/v2/index.css";
 import "./stream-overrides.css";
 import { getStreamClient, fetchStreamToken } from "@/lib/streamClient";
+import { ensureAuth } from "@/lib/authGuard";
 import { VideoMeetingModal } from "./VideoMeetingModal";
 import { MemberManagementPanel } from "./MemberManagementPanel";
 import { BrdReviewCard } from "./BrdReviewCard";
@@ -1576,7 +1577,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
 
   const fetchImportant = useCallback(async () => {
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/channels/${request.id}/important`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -1586,7 +1587,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
   }, [request.id]);
 
   const toggleImportant = useCallback(async (msgId: string, text: string, sender: string) => {
-    const token = localStorage.getItem("authToken");
+    const token = await ensureAuth();
     if (importantIds.has(msgId)) {
       setImportantMessages((prev) => prev.filter((m) => m.stream_message_id !== msgId));
       await fetch(`${API}/api/stream/channels/${request.id}/important/${encodeURIComponent(msgId)}`, {
@@ -1612,7 +1613,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
     if (!isBA) return;
     setGenerating(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/channels/${request.id}/generate-key-points`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -1634,7 +1635,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
     setGeneratingBrd(true);
     setBrdSuccess(false);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/channels/${request.id}/generate-brd`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -1655,7 +1656,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
     if (!isBA) return;
     setAnalyzingDocs(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/channels/${request.id}/analyze-documents`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -1671,7 +1672,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
     if (!isBA) return;
     setCheckingCompleteness(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/channels/${request.id}/completeness-check`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -1687,7 +1688,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
     if (!isBA) return;
     setGeneratingScope(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/channels/${request.id}/generate-scope`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -1700,7 +1701,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
   }, [request.id, isBA]);
 
   const saveScope = useCallback(async (content: ScopeResult, approve: boolean) => {
-    const token = localStorage.getItem("authToken");
+    const token = await ensureAuth();
     await fetch(`${API}/api/stream/channels/${request.id}/scope`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -1714,7 +1715,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
     if (!isBA || !scopeResult) return;
     setGeneratingWorkflow(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/channels/${request.id}/generate-workflow`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -1728,7 +1729,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
   }, [request.id, isBA, scopeResult]);
 
   const saveWorkflow = useCallback(async (content: WorkflowResult, approve: boolean) => {
-    const token = localStorage.getItem("authToken");
+    const token = await ensureAuth();
     await fetch(`${API}/api/stream/channels/${request.id}/workflow`, {
       method: "PATCH",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -1750,7 +1751,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
           await client.connectUser({ id: userId, name: currentUser.name || currentUser.email }, token);
         }
         if (isBA) {
-          const authToken = localStorage.getItem("authToken");
+          const authToken = await ensureAuth();
           await fetch(`${API}/api/stream/channels/${request.id}`, {
             method: "POST",
             headers: { Authorization: `Bearer ${authToken}` },
@@ -1781,7 +1782,7 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
   const startMeeting = useCallback(async () => {
     setLoadingMeeting(true);
     try {
-      const authToken = localStorage.getItem("authToken");
+      const authToken = await ensureAuth();
       const res = await fetch(`${API}/api/stream/daily/rooms`, {
         method: "POST",
         headers: { Authorization: `Bearer ${authToken}`, "Content-Type": "application/json" },

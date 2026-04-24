@@ -1,4 +1,5 @@
 import { StreamChat } from "stream-chat";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -18,7 +19,7 @@ export async function fetchStreamToken(): Promise<{
   apiKey: string;
   userId: string;
 }> {
-  const authToken = localStorage.getItem("authToken");
+  const authToken = await ensureAuth();
   const res = await fetch(`${API}/api/stream/token`, {
     headers: { Authorization: `Bearer ${authToken}` },
   });

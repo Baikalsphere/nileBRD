@@ -95,11 +95,16 @@ export default function SignupPage() {
         setError(data.message || "Signup failed");
         setIsLoading(false);
       } else {
-        alert("Signup successful! Redirecting to dashboard...");
-        localStorage.setItem("authToken", data.token);
+        // Cookies set by the API route — redirect to the correct portal
+        const rolePortals: Record<string, string> = {
+          stakeholder: "/stakeholder",
+          ba: "/ba",
+          it: "/it",
+          it_member: "/it-member",
+        };
         setTimeout(() => {
-          window.location.href = "/";
-        }, 1000);
+          window.location.href = rolePortals[data.user.role] ?? "/";
+        }, 800);
       }
     } catch (err) {
       setError("An error occurred. Please try again.");

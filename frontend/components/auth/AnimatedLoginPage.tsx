@@ -310,11 +310,8 @@ function LoginPage() {
       if (!response.ok) {
         setError(data.message || "Login failed. Try again.");
       } else {
-        localStorage.setItem("authToken", data.token);
-        localStorage.setItem("userRole", data.user.role);
-        localStorage.setItem("userEmail", data.user.email);
-
-        // Redirect to portal based on role
+        // Cookies (auth_token httpOnly + user_meta) are set by the API route.
+        // Just redirect — the middleware will verify the cookie.
         const rolePortals: { [key: string]: string } = {
           stakeholder: "/stakeholder",
           ba: "/ba",

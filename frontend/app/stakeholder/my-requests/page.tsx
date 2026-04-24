@@ -3,11 +3,12 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   Briefcase, CalendarDays, Check, Clock, Download, FileText,
-  Flame, Inbox, Loader2, MessageSquare, Paperclip,
-  RefreshCw, TrendingUp, Users, Eye, Zap, AlertCircle, UserCheck,
+  Flame, Inbox, Loader2, MessageSquare, Paperclip, Plus,
+  RefreshCw, TrendingUp, Users, Eye, Zap, AlertCircle, UserCheck, Upload,
 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { useDiscussionPanel } from "@/components/dashboard/DiscussionPanel";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -82,7 +83,7 @@ function WorkflowTracker({ status }: { status: string }) {
   );
 }
 
-function DetailsModal({ request, isOpen, onClose }: { request: RequestItem | null; isOpen: boolean; onClose: () => void }) {
+function DetailsModal({ request, isOpen, onClose, onAttach }: { request: RequestItem | null; isOpen: boolean; onClose: () => void; onAttach?: () => void }) {
   const [downloading, setDownloading] = useState<number | null>(null);
 
   if (!isOpen || !request) return null;
@@ -90,11 +91,16 @@ function DetailsModal({ request, isOpen, onClose }: { request: RequestItem | nul
   const downloadAttachment = async (att: Attachment) => {
     setDownloading(att.id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/requests/attachment/${att.id}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error("Failed");
-      const { url } = await res.json();
-      window.open(url, "_blank");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = att.original_name;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch { /* ignore */ } finally { setDownloading(null); }
   };
 
@@ -184,7 +190,16 @@ function DetailsModal({ request, isOpen, onClose }: { request: RequestItem | nul
         </div>
 
         {/* Footer */}
-        <div className="border-t border-slate-200 flex justify-end px-6 py-3 bg-slate-50 rounded-b-2xl">
+        <div className="border-t border-slate-200 flex items-center justify-between px-6 py-3 bg-slate-50 rounded-b-2xl">
+          {onAttach ? (
+            <button
+              onClick={onAttach}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition-colors"
+            >
+              <Paperclip className="size-3.5" />
+              Attach Files
+            </button>
+          ) : <span />}
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium text-sm transition-colors">
             Close
           </button>
@@ -214,8 +229,10 @@ function ReassignModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    const token = localStorage.getItem("authToken");
-    fetch(`${API}/api/requests/ba-list`, { headers: { Authorization: `Bearer ${token}` } })
+    ensureAuth()
+      .then(token =>
+        fetch(`${API}/api/requests/ba-list`, { headers: { Authorization: `Bearer ${token}` } })
+      )
       .then(r => r.json())
       .then(d => setBas(d.bas || []))
       .catch(() => setError("Failed to load BA list"));
@@ -228,7 +245,7 @@ function ReassignModal({
     setSubmitting(true);
     setError("");
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/requests/${request.id}/reassign-ba`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -300,17 +317,135 @@ function ReassignModal({
   );
 }
 
+function AddAttachmentModal({
+  request,
+  isOpen,
+  onClose,
+  onUploaded,
+}: {
+  request: RequestItem | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onUploaded: () => void;
+}) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => { if (!isOpen) { setFiles([]); setError(""); } }, [isOpen]);
+
+  if (!isOpen || !request) return null;
+
+  const ALLOWED = ["application/pdf", "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "image/png", "image/jpeg"];
+
+  const handleFiles = (picked: FileList | null) => {
+    if (!picked) return;
+    const valid = Array.from(picked).filter(f => ALLOWED.includes(f.type));
+    const invalid = Array.from(picked).length - valid.length;
+    setError(invalid > 0 ? `${invalid} file(s) skipped — unsupported type.` : "");
+    setFiles(prev => [...prev, ...valid]);
+  };
+
+  const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
+
+  const handleUpload = async () => {
+    if (!files.length) return;
+    setUploading(true);
+    setError("");
+    try {
+      const token = await ensureAuth();
+      const form = new FormData();
+      files.forEach(f => form.append("attachments", f));
+      const res = await fetch(`${API}/api/requests/${request.id}/attachments`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Upload failed");
+      onUploaded();
+      onClose();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Attach Files</h2>
+            <p className="text-sm text-slate-500">{request.req_number} — {request.title}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {/* Drop zone */}
+          <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100 cursor-pointer px-4 py-8 transition-colors">
+            <Upload className="size-8 text-slate-400" />
+            <p className="text-sm font-semibold text-slate-600">Click to select files</p>
+            <p className="text-xs text-slate-400">PDF, Word, Excel, PNG, JPEG · max 10 MB each</p>
+            <input type="file" multiple className="hidden" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={e => handleFiles(e.target.files)} />
+          </label>
+
+          {/* Selected files */}
+          {files.length > 0 && (
+            <div className="space-y-2">
+              {files.map((f, i) => (
+                <div key={i} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Paperclip className="size-4 shrink-0 text-blue-500" />
+                    <p className="truncate text-xs font-medium text-slate-800">{f.name}</p>
+                    <span className="shrink-0 text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
+                  </div>
+                  <button onClick={() => removeFile(i)} className="ml-2 text-slate-400 hover:text-rose-500 text-lg leading-none">&times;</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {error && <p className="text-xs text-rose-600">{error}</p>}
+        </div>
+
+        <div className="border-t border-slate-200 flex justify-end gap-3 px-6 py-3 bg-slate-50 rounded-b-2xl">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 font-medium text-sm">
+            Cancel
+          </button>
+          <button
+            onClick={handleUpload}
+            disabled={!files.length || uploading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-semibold text-sm"
+          >
+            {uploading ? <RefreshCw className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+            {uploading ? "Uploading…" : `Upload ${files.length > 0 ? `(${files.length})` : ""}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RequestsTable({
   requests,
   onDetails,
   onDiscussion,
   onReassign,
+  onAttach,
   showSubmitter = false,
 }: {
   requests: RequestItem[];
   onDetails: (r: RequestItem) => void;
   onDiscussion: (r: RequestItem) => void;
   onReassign?: (r: RequestItem) => void;
+  onAttach?: (r: RequestItem) => void;
   showSubmitter?: boolean;
 }) {
   if (requests.length === 0) return null;
@@ -420,6 +555,15 @@ function RequestsTable({
                         <UserCheck className="size-3.5" />
                       </button>
                     )}
+                    {onAttach && (
+                      <button
+                        onClick={() => onAttach(req)}
+                        className="flex h-7 w-7 items-center justify-center rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-all hover:shadow-md active:scale-95"
+                        title="Attach Files"
+                      >
+                        <Paperclip className="size-3.5" />
+                      </button>
+                    )}
                     {req.attachments.length > 0 && (
                       <span className="inline-flex items-center justify-center rounded bg-slate-100 text-xs font-bold text-slate-600 h-7 w-6" title={`${req.attachments.length} attachment${req.attachments.length > 1 ? "s" : ""}`}>
                         {req.attachments.length}
@@ -447,10 +591,12 @@ export default function MyRequestsPage() {
   const [detailsOpen, setDetailsOpen]           = useState(false);
   const [reassignRequest, setReassignRequest]   = useState<RequestItem | null>(null);
   const [reassignOpen, setReassignOpen]         = useState(false);
+  const [attachRequest, setAttachRequest]       = useState<RequestItem | null>(null);
+  const [attachOpen, setAttachOpen]             = useState(false);
   const { openDiscussion } = useDiscussionPanel();
 
   const fetchData = useCallback(async () => {
-    const token = localStorage.getItem("authToken");
+    const token = await ensureAuth();
     if (!token) { setLoading(false); return; }
     try {
       const decoded = JSON.parse(atob(token.split(".")[1]));
@@ -476,6 +622,8 @@ export default function MyRequestsPage() {
   const handleDetails = (req: RequestItem) => { setSelectedRequest(req); setDetailsOpen(true); };
   const handleDiscussion = (req: RequestItem) => openDiscussion(req, userId, userName);
   const handleReassign = (req: RequestItem) => { setReassignRequest(req); setReassignOpen(true); };
+  const handleAttach = (req: RequestItem) => { setAttachRequest(req); setAttachOpen(true); };
+  const handleAttachFromDetails = () => { setDetailsOpen(false); setAttachRequest(selectedRequest); setAttachOpen(true); };
 
   const byPriority: Record<string, number> = {};
   myRequests.forEach((r) => { byPriority[r.priority] = (byPriority[r.priority] || 0) + 1; });
@@ -541,7 +689,7 @@ export default function MyRequestsPage() {
         </Card>
       ) : (
         <Card className="border-2 border-slate-300 overflow-hidden">
-          <RequestsTable requests={myRequests} onDetails={handleDetails} onDiscussion={handleDiscussion} onReassign={handleReassign} />
+          <RequestsTable requests={myRequests} onDetails={handleDetails} onDiscussion={handleDiscussion} onReassign={handleReassign} onAttach={handleAttach} />
           <div className="border-t-2 border-slate-300 bg-gradient-to-r from-slate-50 to-slate-100 px-5 py-4">
             <p className="text-sm font-semibold text-slate-700">
               Total: <span className="font-bold text-slate-900">{myRequests.length}</span> request{myRequests.length !== 1 ? "s" : ""}
@@ -574,7 +722,15 @@ export default function MyRequestsPage() {
       )}
 
       {/* Details modal */}
-      <DetailsModal request={selectedRequest} isOpen={detailsOpen} onClose={() => setDetailsOpen(false)} />
+      <DetailsModal request={selectedRequest} isOpen={detailsOpen} onClose={() => setDetailsOpen(false)} onAttach={handleAttachFromDetails} />
+
+      {/* Attach files modal */}
+      <AddAttachmentModal
+        request={attachRequest}
+        isOpen={attachOpen}
+        onClose={() => setAttachOpen(false)}
+        onUploaded={handleRefresh}
+      />
 
       {/* Reassign modal */}
       <ReassignModal

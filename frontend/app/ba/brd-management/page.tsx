@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { buildPdfHtml, openPdf, type BrdDoc } from "@/lib/brdPdf";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -666,7 +667,7 @@ export default function BRDManagementPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setBrdList(await res.json());
     } finally { setLoading(false); }
@@ -677,7 +678,7 @@ export default function BRDManagementPage() {
   const openView = useCallback(async (id: number) => {
     setLoadingId(id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${id}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) setViewingDoc(await res.json());
     } finally { setLoadingId(null); }
@@ -692,7 +693,7 @@ export default function BRDManagementPage() {
     );
     setLoadingId(id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${id}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const doc = await res.json();
@@ -709,7 +710,7 @@ export default function BRDManagementPage() {
   const updateStatus = useCallback(async (id: number, status: string) => {
     setUpdatingId(id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       await fetch(`${API}/api/stream/brd-documents/${id}/status`, {
         method: "PATCH",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -722,7 +723,7 @@ export default function BRDManagementPage() {
   const postToChannel = useCallback(async (id: number) => {
     setPostingId(id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${id}/post-to-channel`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -737,7 +738,7 @@ export default function BRDManagementPage() {
   const sendToItManager = useCallback(async (id: number) => {
     setSendingItId(id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${id}/send-to-it-manager`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -752,7 +753,7 @@ export default function BRDManagementPage() {
   const enhanceFromFeedback = useCallback(async (id: number) => {
     setEnhancingId(id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${id}/enhance`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
