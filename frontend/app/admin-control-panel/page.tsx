@@ -39,7 +39,6 @@ interface User {
   role: UserRole;
   name: string | null;
   is_it_manager: boolean;
-  auth_provider: string | null;
   created_at: string;
 }
 
@@ -642,17 +641,6 @@ export default function AdminPanel() {
                               {user.is_it_manager && (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300">
                                   <Crown className="size-2.5" /> IT Manager
-                                </span>
-                              )}
-                              {user.auth_provider === "azure" && (
-                                <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-bold text-blue-300">
-                                  <svg viewBox="0 0 21 21" className="size-2.5 shrink-0">
-                                    <rect x="1" y="1" width="9" height="9" fill="#f25022" />
-                                    <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
-                                    <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
-                                    <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
-                                  </svg>
-                                  Microsoft SSO
                                 </span>
                               )}
                             </div>

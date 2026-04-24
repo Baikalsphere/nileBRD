@@ -4,7 +4,7 @@ import bcryptjs from "bcryptjs";
 export async function getAllUsers() {
   try {
     const result = await pool.query(
-      "SELECT id, email, role, name, is_it_manager, COALESCE(auth_provider, 'local') AS auth_provider, created_at FROM users ORDER BY created_at DESC"
+      "SELECT id, email, role, name, is_it_manager, created_at FROM users ORDER BY created_at DESC"
     );
     return result.rows;
   } catch (error) {
