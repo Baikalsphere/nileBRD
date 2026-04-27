@@ -6,7 +6,6 @@ import {
   Flame, Inbox, Loader2, MessageSquare, Paperclip, Plus,
   RefreshCw, TrendingUp, Users, Eye, Zap, AlertCircle, UserCheck, Upload,
 } from "lucide-react";
-import { Card } from "@/components/ui/Card";
 import { useDiscussionPanel } from "@/components/dashboard/DiscussionPanel";
 import { ensureAuth } from "@/lib/authGuard";
 
@@ -33,11 +32,22 @@ interface RequestItem {
   attachments: Attachment[];
 }
 
-const priorityConfig: Record<string, { color: string; bg: string; border: string; icon: React.ReactNode }> = {
-  Low:      { color: "text-emerald-600", bg: "bg-emerald-50",  border: "border-emerald-200", icon: <TrendingUp className="size-3" /> },
-  Medium:   { color: "text-amber-600",   bg: "bg-amber-50",    border: "border-amber-200",   icon: <Clock className="size-3" /> },
-  High:     { color: "text-orange-600",  bg: "bg-orange-50",   border: "border-orange-200",  icon: <Zap className="size-3" /> },
-  Critical: { color: "text-rose-600",    bg: "bg-rose-50",     border: "border-rose-200",    icon: <Flame className="size-3" /> },
+const priorityConfig: Record<string, { color: string; bg: string; border: string; dot: string; icon: React.ReactNode }> = {
+  Low:      { color: "text-emerald-700", bg: "bg-emerald-50",  border: "border-emerald-200", dot: "bg-emerald-400", icon: <TrendingUp className="size-3" /> },
+  Medium:   { color: "text-amber-700",   bg: "bg-amber-50",    border: "border-amber-200",   dot: "bg-amber-400",   icon: <Clock className="size-3" /> },
+  High:     { color: "text-orange-700",  bg: "bg-orange-50",   border: "border-orange-200",  dot: "bg-orange-500",  icon: <Zap className="size-3" /> },
+  Critical: { color: "text-rose-700",    bg: "bg-rose-50",     border: "border-rose-200",    dot: "bg-rose-500",    icon: <Flame className="size-3" /> },
+};
+
+const statusConfig: Record<string, { color: string; bg: string }> = {
+  "Submitted":   { color: "text-blue-700",   bg: "bg-blue-50"   },
+  "BA Assigned": { color: "text-indigo-700", bg: "bg-indigo-50" },
+  "BRD":         { color: "text-violet-700", bg: "bg-violet-50" },
+  "FRD":         { color: "text-purple-700", bg: "bg-purple-50" },
+  "Dev":         { color: "text-cyan-700",   bg: "bg-cyan-50"   },
+  "UAT":         { color: "text-teal-700",   bg: "bg-teal-50"   },
+  "Closed":      { color: "text-slate-500",  bg: "bg-slate-100" },
+  "Rejected":    { color: "text-rose-700",   bg: "bg-rose-50"   },
 };
 
 const WORKFLOW = ["Submitted", "BA Assigned", "BRD", "FRD", "Dev", "UAT", "Closed"];
@@ -164,23 +174,23 @@ function DetailsModal({ request, isOpen, onClose, onAttach }: { request: Request
               </p>
               <div className="space-y-2">
                 {request.attachments.map((att) => (
-                  <div key={att.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 hover:bg-slate-100 transition-colors">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-100">
-                        <Paperclip className="size-4 text-blue-600" />
+                  <div key={att.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 hover:border-indigo-200 hover:bg-indigo-50/30 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100">
+                        <Paperclip className="size-4 text-indigo-600" />
                       </div>
                       <div className="min-w-0">
-                        <p className="truncate text-xs font-medium text-slate-900">{att.original_name}</p>
-                        <p className="text-xs text-slate-500">{formatSize(att.size)}</p>
+                        <p className="truncate text-sm font-medium text-slate-800">{att.original_name}</p>
+                        <p className="text-xs text-slate-400">{formatSize(att.size)}</p>
                       </div>
                     </div>
                     <button
                       onClick={() => downloadAttachment(att)}
                       disabled={downloading === att.id}
-                      className="ml-2 flex shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                      className="ml-3 flex shrink-0 items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 px-3.5 py-2 text-xs font-semibold text-white transition-colors"
                     >
                       {downloading === att.id ? <RefreshCw className="size-3 animate-spin" /> : <Download className="size-3" />}
-                      {downloading === att.id ? "…" : "Download"}
+                      {downloading === att.id ? "Downloading…" : "Download"}
                     </button>
                   </div>
                 ))}
@@ -402,7 +412,7 @@ function AddAttachmentModal({
               {files.map((f, i) => (
                 <div key={i} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <Paperclip className="size-4 shrink-0 text-blue-500" />
+                    <Paperclip className="size-4 shrink-0 text-indigo-500" />
                     <p className="truncate text-xs font-medium text-slate-800">{f.name}</p>
                     <span className="shrink-0 text-xs text-slate-400">{(f.size / 1024).toFixed(0)} KB</span>
                   </div>
@@ -450,133 +460,137 @@ function RequestsTable({
 }) {
   if (requests.length === 0) return null;
   return (
-    <div className="w-full overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse">
-        <thead>
-          <tr className="border-b-2 border-slate-300 bg-gradient-to-r from-slate-50 to-slate-100">
-            <th className="w-[11%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">ID</th>
-            <th className="w-[26%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">Title</th>
-            <th className="w-[12%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">Priority</th>
-            <th className="w-[12%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">Status</th>
-            {showSubmitter
-              ? <th className="w-[14%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">Submitted By</th>
-              : <th className="w-[14%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">Assigned BA</th>
-            }
-            <th className="w-[12%] px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">Category</th>
-            <th className="w-[7%]  px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-600">Date</th>
-            <th className="w-[6%]  px-4 py-3 text-center text-xs font-bold uppercase tracking-wider text-slate-600">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {requests.map((req) => {
-            const p = priorityConfig[req.priority] ?? priorityConfig.Medium;
-            return (
-              <tr key={req.id} className="hover:bg-blue-50/40 transition-colors duration-100">
-                {/* ID */}
-                <td className="px-4 py-3 align-middle">
-                  <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded whitespace-nowrap">
-                    {req.req_number}
+    <table className="w-full text-sm border-collapse">
+      <thead>
+        <tr className="border-b border-slate-200 bg-slate-50">
+          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Req #</th>
+          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400">Title</th>
+          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Priority</th>
+          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
+          {showSubmitter
+            ? <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden md:table-cell">Submitted By</th>
+            : <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden md:table-cell">Assigned BA</th>
+          }
+          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden lg:table-cell">Category</th>
+          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden xl:table-cell">Date</th>
+          <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Docs</th>
+          <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {requests.map((req, idx) => {
+          const p  = priorityConfig[req.priority] ?? priorityConfig.Medium;
+          const sc = statusConfig[req.status] ?? { color: "text-slate-500", bg: "bg-slate-100" };
+          return (
+            <tr
+              key={req.id}
+              className={`border-b border-slate-100 hover:bg-indigo-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
+            >
+              {/* Req number */}
+              <td className="px-4 py-3.5 whitespace-nowrap">
+                <span className="font-mono text-xs font-bold text-indigo-500 bg-indigo-50 rounded-md px-2 py-1">
+                  {req.req_number}
+                </span>
+              </td>
+
+              {/* Title */}
+              <td className="px-4 py-3.5 max-w-[240px]">
+                <p className="text-sm font-semibold text-slate-800 truncate" title={req.title}>{req.title}</p>
+              </td>
+
+              {/* Priority */}
+              <td className="px-4 py-3.5 whitespace-nowrap">
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
+                  {p.icon}{req.priority}
+                </span>
+              </td>
+
+              {/* Status */}
+              <td className="px-4 py-3.5 whitespace-nowrap">
+                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${sc.color} ${sc.bg}`}>
+                  {req.status}
+                </span>
+              </td>
+
+              {/* BA / Submitter */}
+              <td className="px-4 py-3.5 hidden md:table-cell whitespace-nowrap">
+                {showSubmitter ? (
+                  <span className="text-xs text-slate-500">
+                    {req.stakeholder_name || req.stakeholder_email?.split("@")[0] || "—"}
                   </span>
-                </td>
-
-                {/* Title */}
-                <td className="px-4 py-3 align-middle max-w-0">
-                  <p className="text-xs font-semibold text-slate-900 truncate" title={req.title}>{req.title}</p>
-                </td>
-
-                {/* Priority */}
-                <td className="px-4 py-3 align-middle">
-                  <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-bold whitespace-nowrap ${p.color} ${p.bg} ${p.border}`}>
-                    {p.icon}<span>{req.priority}</span>
+                ) : (
+                  <span className={`text-xs font-semibold ${req.ba_name || req.ba_email ? "text-indigo-700" : "text-amber-500 italic"}`}>
+                    {req.ba_name || req.ba_email || "Awaiting assignment"}
                   </span>
-                </td>
+                )}
+              </td>
 
-                {/* Status */}
-                <td className="px-4 py-3 align-middle">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold whitespace-nowrap ${
-                    req.status === "Closed"      ? "bg-emerald-100 text-emerald-700" :
-                    req.status === "Rejected"    ? "bg-rose-100 text-rose-700" :
-                    req.status === "Submitted"   ? "bg-slate-100 text-slate-600" :
-                    req.status === "BA Assigned" ? "bg-indigo-100 text-indigo-700" :
-                                                   "bg-violet-100 text-violet-700"
-                  }`}>
-                    {req.status}
+              {/* Category */}
+              <td className="px-4 py-3.5 hidden lg:table-cell">
+                <span className="text-xs text-slate-500">{req.category}</span>
+              </td>
+
+              {/* Date */}
+              <td className="px-4 py-3.5 hidden xl:table-cell whitespace-nowrap">
+                <span className="text-xs text-slate-400">
+                  {new Date(req.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                </span>
+              </td>
+
+              {/* Attachments */}
+              <td className="px-4 py-3.5 text-center">
+                {req.attachments.length > 0 ? (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
+                    <Paperclip className="size-3" />{req.attachments.length}
                   </span>
-                </td>
+                ) : (
+                  <span className="text-xs text-slate-300">—</span>
+                )}
+              </td>
 
-                {/* BA / Submitter */}
-                <td className="px-4 py-3 align-middle max-w-0">
-                  {showSubmitter ? (
-                    <p className="text-xs font-semibold text-indigo-700 truncate">
-                      {req.stakeholder_name || req.stakeholder_email?.split("@")[0] || "—"}
-                    </p>
-                  ) : (
-                    <p className={`text-xs font-semibold truncate ${req.ba_name || req.ba_email ? "text-indigo-700" : "text-amber-500 italic"}`}>
-                      {req.ba_name || req.ba_email || "Awaiting assignment"}
-                    </p>
+              {/* Actions */}
+              <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                <div className="flex items-center justify-end gap-1.5">
+                  <button
+                    onClick={() => onDetails(req)}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                  >
+                    <Eye className="size-3.5 text-slate-400" />
+                    Details
+                  </button>
+                  <button
+                    onClick={() => onDiscussion(req)}
+                    className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-100"
+                  >
+                    <MessageSquare className="size-3.5" />
+                    Discuss
+                  </button>
+                  {onAttach && (
+                    <button
+                      onClick={() => onAttach(req)}
+                      className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-all shadow-sm"
+                      title="Attach Files"
+                    >
+                      <Paperclip className="size-3.5" />
+                      Attach
+                    </button>
                   )}
-                </td>
-
-                {/* Category */}
-                <td className="px-4 py-3 align-middle max-w-0">
-                  <span className="block truncate text-xs text-slate-600 bg-slate-100 px-2 py-1 rounded" title={req.category}>
-                    {req.category}
-                  </span>
-                </td>
-
-                {/* Date */}
-                <td className="px-4 py-3 align-middle whitespace-nowrap text-xs text-slate-500">
-                  {new Date(req.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </td>
-
-                {/* Actions */}
-                <td className="px-4 py-3 align-middle">
-                  <div className="flex items-center justify-center gap-1.5">
+                  {onReassign && !showSubmitter && (req.ba_name || req.ba_email) && (
                     <button
-                      onClick={() => onDetails(req)}
-                      className="flex h-7 w-7 items-center justify-center rounded bg-slate-600 hover:bg-slate-700 text-white transition-all hover:shadow-md active:scale-95"
-                      title="View Details"
+                      onClick={() => onReassign(req)}
+                      className="flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 hover:bg-amber-200 transition-all"
+                      title="Reassign BA"
                     >
-                      <Eye className="size-3.5" />
+                      <UserCheck className="size-3.5" />
                     </button>
-                    <button
-                      onClick={() => onDiscussion(req)}
-                      className="flex h-7 w-7 items-center justify-center rounded bg-indigo-600 hover:bg-indigo-700 text-white transition-all hover:shadow-md active:scale-95"
-                      title="Open Discussion"
-                    >
-                      <MessageSquare className="size-3.5" />
-                    </button>
-                    {onReassign && !showSubmitter && (req.ba_name || req.ba_email) && (
-                      <button
-                        onClick={() => onReassign(req)}
-                        className="flex h-7 w-7 items-center justify-center rounded bg-amber-500 hover:bg-amber-600 text-white transition-all hover:shadow-md active:scale-95"
-                        title="Reassign BA"
-                      >
-                        <UserCheck className="size-3.5" />
-                      </button>
-                    )}
-                    {onAttach && (
-                      <button
-                        onClick={() => onAttach(req)}
-                        className="flex h-7 w-7 items-center justify-center rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-all hover:shadow-md active:scale-95"
-                        title="Attach Files"
-                      >
-                        <Paperclip className="size-3.5" />
-                      </button>
-                    )}
-                    {req.attachments.length > 0 && (
-                      <span className="inline-flex items-center justify-center rounded bg-slate-100 text-xs font-bold text-slate-600 h-7 w-6" title={`${req.attachments.length} attachment${req.attachments.length > 1 ? "s" : ""}`}>
-                        {req.attachments.length}
-                      </span>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+                  )}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 }
 
@@ -619,110 +633,131 @@ export default function MyRequestsPage() {
 
   const handleRefresh = () => { setRefreshing(true); fetchData(); };
 
-  const handleDetails = (req: RequestItem) => { setSelectedRequest(req); setDetailsOpen(true); };
+  const handleDetails    = (req: RequestItem) => { setSelectedRequest(req); setDetailsOpen(true); };
   const handleDiscussion = (req: RequestItem) => openDiscussion(req, userId, userName);
-  const handleReassign = (req: RequestItem) => { setReassignRequest(req); setReassignOpen(true); };
-  const handleAttach = (req: RequestItem) => { setAttachRequest(req); setAttachOpen(true); };
+  const handleReassign   = (req: RequestItem) => { setReassignRequest(req); setReassignOpen(true); };
+  const handleAttach     = (req: RequestItem) => { setAttachRequest(req); setAttachOpen(true); };
   const handleAttachFromDetails = () => { setDetailsOpen(false); setAttachRequest(selectedRequest); setAttachOpen(true); };
 
   const byPriority: Record<string, number> = {};
   myRequests.forEach((r) => { byPriority[r.priority] = (byPriority[r.priority] || 0) + 1; });
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-8 pb-8">
+
+      {/* ── Page header ── */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-md shadow-indigo-100">
-            <FileText className="size-5 text-white" />
+        <div className="flex items-center gap-4">
+          <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-200">
+            <FileText className="size-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">My Requests</h1>
-            <p className="text-xs text-slate-500">{myRequests.length} request{myRequests.length !== 1 ? "s" : ""} submitted</p>
+            <h1 className="text-2xl font-bold text-slate-900">My Requests</h1>
+            <p className="text-sm text-slate-500">
+              {loading ? "Loading…" : `${myRequests.length} request${myRequests.length !== 1 ? "s" : ""} submitted`}
+            </p>
           </div>
         </div>
         <button
           onClick={handleRefresh}
-          className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:border-slate-400 transition-all"
+          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-600 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-all active:scale-95"
         >
-          <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`size-4 ${refreshing ? "animate-spin text-indigo-500" : "text-slate-400"}`} />
           Refresh
         </button>
       </div>
 
-      {/* Priority stats grid */}
-      {myRequests.length > 0 && (
+      {/* ── Priority stats ── */}
+      {myRequests.length > 0 && !loading && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           {(["Critical", "High", "Medium", "Low"] as Priority[]).map((lvl) => {
-            const p = priorityConfig[lvl];
+            const p     = priorityConfig[lvl];
             const count = byPriority[lvl] || 0;
             return (
-              <div key={lvl} className={`rounded-2xl border-2 p-4 ${p.bg} ${p.border}`}>
-                <div className="flex items-center gap-2 mb-2">
+              <div key={lvl} className={`relative overflow-hidden rounded-2xl border-2 p-5 ${p.bg} ${p.border}`}>
+                <div className={`absolute right-3 top-3 flex size-8 items-center justify-center rounded-xl ${p.bg}`}>
                   <span className={p.color}>{p.icon}</span>
-                  <span className={`text-xs font-bold uppercase tracking-wider ${p.color}`}>{lvl}</span>
                 </div>
-                <p className={`text-3xl font-bold ${p.color}`}>{count}</p>
+                <p className={`text-4xl font-black ${p.color}`}>{count}</p>
+                <p className={`mt-1 text-xs font-bold uppercase tracking-widest ${p.color} opacity-70`}>{lvl}</p>
               </div>
             );
           })}
         </div>
       )}
 
-      {/* My Requests table */}
+      {/* ── My Requests table ── */}
       {loading ? (
-        <Card className="border-2 border-slate-300">
-          <div className="flex items-center justify-center py-16 gap-3 text-slate-400">
-            <RefreshCw className="size-5 animate-spin" />
-            <span className="text-base">Loading requests…</span>
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 py-24">
+          <div className="flex size-14 items-center justify-center rounded-2xl bg-white shadow-sm">
+            <RefreshCw className="size-6 animate-spin text-indigo-400" />
           </div>
-        </Card>
+          <p className="text-sm font-medium text-slate-500">Loading your requests…</p>
+        </div>
       ) : myRequests.length === 0 ? (
-        <Card className="border-2 border-slate-300">
-          <div className="flex flex-col items-center py-20 text-center">
-            <div className="mb-4 flex size-20 items-center justify-center rounded-2xl bg-slate-100">
-              <Inbox className="size-10 text-slate-400" />
-            </div>
-            <p className="text-lg font-semibold text-slate-700">No requests yet</p>
-            <p className="mt-2 max-w-xs text-sm text-slate-500">Submit a business problem to get started.</p>
+        <div className="flex flex-col items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 py-24 text-center px-8">
+          <div className="flex size-20 items-center justify-center rounded-3xl bg-white shadow-sm">
+            <FileText className="size-10 text-slate-300" />
           </div>
-        </Card>
-      ) : (
-        <Card className="border-2 border-slate-300 overflow-hidden">
-          <RequestsTable requests={myRequests} onDetails={handleDetails} onDiscussion={handleDiscussion} onReassign={handleReassign} onAttach={handleAttach} />
-          <div className="border-t-2 border-slate-300 bg-gradient-to-r from-slate-50 to-slate-100 px-5 py-4">
-            <p className="text-sm font-semibold text-slate-700">
-              Total: <span className="font-bold text-slate-900">{myRequests.length}</span> request{myRequests.length !== 1 ? "s" : ""}
+          <div>
+            <p className="text-lg font-bold text-slate-700">No requests yet</p>
+            <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-slate-400">
+              Submit a business problem to get started.
             </p>
           </div>
-        </Card>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <RequestsTable
+            requests={myRequests}
+            onDetails={handleDetails}
+            onDiscussion={handleDiscussion}
+            onReassign={handleReassign}
+            onAttach={handleAttach}
+          />
+          <div className="border-t border-slate-100 bg-slate-50 px-5 py-2.5">
+            <p className="text-xs font-medium text-slate-400">
+              {myRequests.length} request{myRequests.length !== 1 ? "s" : ""} total
+            </p>
+          </div>
+        </div>
       )}
 
-      {/* Shared with me */}
+      {/* ── Shared with me ── */}
       {sharedRequests.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
             <Users className="size-4 text-slate-400" />
             <h2 className="text-xs font-bold uppercase tracking-widest text-slate-400">
-              Requests shared with you by BA
+              Shared with you by BA
             </h2>
             <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-600">
               {sharedRequests.length}
             </span>
           </div>
-          <Card className="border-2 border-slate-300 overflow-hidden">
-            <RequestsTable requests={sharedRequests} onDetails={handleDetails} onDiscussion={handleDiscussion} showSubmitter />
-            <div className="border-t-2 border-slate-300 bg-gradient-to-r from-slate-50 to-slate-100 px-5 py-4">
-              <p className="text-sm font-semibold text-slate-700">
-                Total: <span className="font-bold text-slate-900">{sharedRequests.length}</span> shared request{sharedRequests.length !== 1 ? "s" : ""}
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <RequestsTable
+              requests={sharedRequests}
+              onDetails={handleDetails}
+              onDiscussion={handleDiscussion}
+              showSubmitter
+            />
+            <div className="border-t border-slate-100 bg-slate-50 px-5 py-2.5">
+              <p className="text-xs font-medium text-slate-400">
+                {sharedRequests.length} shared request{sharedRequests.length !== 1 ? "s" : ""} total
               </p>
             </div>
-          </Card>
+          </div>
         </div>
       )}
 
       {/* Details modal */}
-      <DetailsModal request={selectedRequest} isOpen={detailsOpen} onClose={() => setDetailsOpen(false)} onAttach={handleAttachFromDetails} />
+      <DetailsModal
+        request={selectedRequest}
+        isOpen={detailsOpen}
+        onClose={() => setDetailsOpen(false)}
+        onAttach={handleAttachFromDetails}
+      />
 
       {/* Attach files modal */}
       <AddAttachmentModal
