@@ -9,11 +9,31 @@
  */
 
 import { createRequire } from "module";
+import { fileURLToPath } from "url";
+import path from "path";
 import { promises as fs } from "fs";
 import pool from "../config/db.js";
 import { getFilePath } from "../storage.js";
 
 const require = createRequire(import.meta.url);
+
+// ─── pdfjs-dist (Mozilla PDF.js) — best font-encoding support ────────────────
+// Lazy-loaded so a missing package doesn't break startup.
+let _pdfjs = null;
+let _cmapUrl = null;
+
+function getPdfjs() {
+  if (_pdfjs) return _pdfjs;
+  try {
+    _pdfjs = require("pdfjs-dist/legacy/build/pdf.js");
+    _pdfjs.GlobalWorkerOptions.workerSrc = false; // no worker thread in Node.js
+    const pkgDir = path.dirname(require.resolve("pdfjs-dist/package.json"));
+    _cmapUrl = path.join(pkgDir, "cmaps") + "/";
+  } catch {
+    _pdfjs = null;
+  }
+  return _pdfjs;
+}
 
 // ─── Section detection ────────────────────────────────────────────────────────
 
@@ -108,47 +128,89 @@ function readabilityScore(text) {
 
 // ─── PDF extraction ───────────────────────────────────────────────────────────
 
-async function extractPdfText(buffer) {
-  let pdfParseText = "";
-  let pdfPages = null;
+/**
+ * Attempt 1: Mozilla PDF.js via pdfjs-dist.
+ * Uses proper ToUnicode CMap tables — fixes garbled text from non-standard font encodings.
+ * Reconstructs lines by grouping text items on the same Y coordinate.
+ */
+async function extractWithPdfjsDist(buffer) {
+  const pdfjs = getPdfjs();
+  if (!pdfjs) return null;
 
   try {
+    const loadingTask = pdfjs.getDocument({
+      data:       new Uint8Array(buffer),
+      cMapUrl:    _cmapUrl,
+      cMapPacked: true,
+      verbosity:  0,                 // silence the DOMMatrix/canvas warnings
+    });
+
+    const pdf  = await loadingTask.promise;
+    const pageTexts = [];
+
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page    = await pdf.getPage(pageNum);
+      const content = await page.getTextContent();
+
+      // Group text items by rounded Y coordinate to reconstruct reading lines
+      const lineMap = new Map();
+      for (const item of content.items) {
+        if (!item.str) continue;
+        const y = Math.round(item.transform[5]);
+        if (!lineMap.has(y)) lineMap.set(y, []);
+        lineMap.get(y).push({ x: item.transform[4], str: item.str });
+      }
+
+      // Higher Y = top of page in PDF coordinates
+      const lines = [...lineMap.entries()]
+        .sort((a, b) => b[0] - a[0])
+        .map(([, items]) =>
+          items.sort((a, b) => a.x - b.x).map(i => i.str).join("").trim()
+        )
+        .filter(l => l.length > 0);
+
+      if (lines.length) pageTexts.push(lines.join("\n"));
+    }
+
+    return { text: pageTexts.join("\n\n"), pages: pdf.numPages };
+  } catch (err) {
+    console.error("[PDFjs] Extraction failed:", err.message);
+    return null;
+  }
+}
+
+/**
+ * Attempt 2: pdf-parse (good for standard PDFs, weaker on custom font encodings).
+ */
+async function extractWithPdfParse(buffer) {
+  try {
     const pdfParse = require("pdf-parse/lib/pdf-parse.js");
-    const data = await pdfParse(buffer, { max: 0 }); // max:0 = all pages
-    pdfParseText = cleanExtractedText(data.text || "");
-    pdfPages = data.numpages || null;
+    const data = await pdfParse(buffer, { max: 0 });
+    return { text: data.text || "", pages: data.numpages || null };
   } catch {
-    // pdf-parse failed — will try regex fallback
+    return null;
   }
+}
 
-  // Use pdf-parse result only if it passes the readability bar
-  if (pdfParseText.length > 100 && readabilityScore(pdfParseText) >= 0.55) {
-    return { text: pdfParseText, pages: pdfPages };
-  }
-
-  // ── Regex fallback: extract strings directly from PDF content streams ──────
+/**
+ * Attempt 3: Raw regex scan of PDF content streams.
+ * Handles both literal (text) strings and hex-encoded <AABB> strings.
+ */
+function extractWithRegex(buffer) {
   const raw = buffer.toString("latin1");
   const chunks = [];
-
-  // Walk each BT…ET text block (PDF text operators)
   const btEt = /BT\s*([\s\S]*?)\s*ET/g;
   let m;
   while ((m = btEt.exec(raw)) !== null) {
     const block = m[1];
-
-    // Literal strings: (text)
     const litRe = /\(([^)]{1,400})\)/g;
     let sm;
     while ((sm = litRe.exec(block)) !== null) {
       const t = sm[1]
         .replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\\t/g, " ")
-        .replace(/\\(.)/g, "$1")                // unescape \x sequences
-        .replace(/[^\x20-\x7E\n]/g, "")
-        .trim();
+        .replace(/\\(.)/g, "$1").replace(/[^\x20-\x7E\n]/g, "").trim();
       if (t.length > 2) chunks.push(t);
     }
-
-    // Hex strings: <4865 6C6C6F> — common when font encoding breaks literals
     const hexRe = /<([0-9A-Fa-f\s]{4,})>/g;
     let hm;
     while ((hm = hexRe.exec(block)) !== null) {
@@ -161,8 +223,6 @@ async function extractPdfText(buffer) {
       if (decoded.length > 2) chunks.push(decoded);
     }
   }
-
-  // Last resort: scan for long ASCII runs anywhere in the file
   if (chunks.length < 10) {
     const asciiRe = /[ -~]{8,}/g;
     let am;
@@ -175,9 +235,47 @@ async function extractPdfText(buffer) {
       }
     }
   }
+  return { text: chunks.join("\n").replace(/\n{3,}/g, "\n\n").trim(), pages: null };
+}
 
-  const fallbackText = chunks.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-  return { text: fallbackText, pages: pdfPages };
+/**
+ * Main PDF extraction — tries three approaches in order of quality,
+ * picks whichever produces the most readable text.
+ */
+async function extractPdfText(buffer) {
+  const candidates = [];
+
+  // 1. pdfjs-dist: best for non-standard font encodings (uses CMap tables)
+  const pdfjsResult = await extractWithPdfjsDist(buffer);
+  if (pdfjsResult?.text) {
+    const cleaned = cleanExtractedText(pdfjsResult.text);
+    candidates.push({ text: cleaned, pages: pdfjsResult.pages, method: "pdfjs" });
+  }
+
+  // 2. pdf-parse: good for standard PDFs
+  const ppResult = await extractWithPdfParse(buffer);
+  if (ppResult?.text) {
+    const cleaned = cleanExtractedText(ppResult.text);
+    candidates.push({ text: cleaned, pages: ppResult.pages, method: "pdf-parse" });
+  }
+
+  // Pick the candidate with the highest readability score
+  const scored = candidates
+    .filter(c => c.text.length > 80)
+    .map(c => ({ ...c, score: readabilityScore(c.text) }))
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (best && best.score >= 0.55) {
+    if (best.method !== "pdfjs" && candidates.length > 1) {
+      console.log(`[PDFParser] Using ${best.method} (score ${best.score.toFixed(2)}) over pdfjs`);
+    }
+    return { text: best.text, pages: best.pages };
+  }
+
+  // 3. Regex fallback — last resort
+  const regexResult = extractWithRegex(buffer);
+  return { text: regexResult.text, pages: null };
 }
 
 // ─── DOCX extraction ──────────────────────────────────────────────────────────
