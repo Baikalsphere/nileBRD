@@ -716,7 +716,7 @@ router.get("/brd-documents", authenticateToken, async (req, res) => {
     if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
     const { rows } = await pool.query(
       `SELECT bd.id, bd.doc_id, bd.version, bd.status, bd.generated_at, bd.updated_at,
-              r.id AS request_id, r.title AS request_title, r.req_number, r.priority, r.category,
+              r.id AS request_id, r.title AS request_title, r.req_number, r.priority, r.category, r.status AS request_status,
               bd.content->'meta'->>'source_messages' AS source_messages,
               COUNT(br.id) FILTER (WHERE br.status = 'pending')           AS reviews_pending,
               COUNT(br.id) FILTER (WHERE br.status = 'approved')          AS reviews_approved,

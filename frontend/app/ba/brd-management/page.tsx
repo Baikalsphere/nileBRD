@@ -28,6 +28,7 @@ interface BrdListItem {
   req_number: string;
   priority: string;
   category: string;
+  request_status: string;
   source_messages: string;
   reviews_pending: string;
   reviews_approved: string;
@@ -54,6 +55,16 @@ const STATUS_COLORS: Record<string, string> = {
 };
 const PRIORITY_DOT: Record<string, string> = {
   Low: "bg-emerald-400", Medium: "bg-amber-400", High: "bg-orange-500", Critical: "bg-rose-500",
+};
+const REQUEST_STATUS_COLORS: Record<string, string> = {
+  "Submitted":   "bg-blue-50   text-blue-700   border-blue-200",
+  "BA Assigned": "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "BRD":         "bg-violet-50 text-violet-700 border-violet-200",
+  "FRD":         "bg-purple-50 text-purple-700 border-purple-200",
+  "Dev":         "bg-cyan-50   text-cyan-700   border-cyan-200",
+  "UAT":         "bg-teal-50   text-teal-700   border-teal-200",
+  "Closed":      "bg-slate-100 text-slate-500  border-slate-200",
+  "Rejected":    "bg-rose-50   text-rose-700   border-rose-200",
 };
 
 // ─── PDF Generator (legacy stub — PDF generation now handled by @/lib/brdPdf) ──
@@ -817,15 +828,16 @@ export default function BRDManagementPage() {
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
                 {[
-                  { label: "Document ID", w: "w-44" },
+                  { label: "Document ID",     w: "w-44" },
                   { label: "Request" },
-                  { label: "Category",  w: "w-28" },
-                  { label: "Priority",  w: "w-24" },
-                  { label: "Status",    w: "w-28" },
-                  { label: "Version",   w: "w-16" },
-                  { label: "Date",      w: "w-28" },
-                  { label: "Reviews",   w: "w-28" },
-                  { label: "Actions",   w: "w-56" },
+                  { label: "Task Status",     w: "w-32" },
+                  { label: "Category",        w: "w-28" },
+                  { label: "Priority",        w: "w-24" },
+                  { label: "BRD Status",      w: "w-28" },
+                  { label: "Version",         w: "w-16" },
+                  { label: "Date",            w: "w-28" },
+                  { label: "Reviews",         w: "w-28" },
+                  { label: "Actions",         w: "w-56" },
                 ].map(({ label, w }) => (
                   <th key={label} className={`${w ?? ""} px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wider text-slate-400`}>
                     {label}
@@ -845,6 +857,13 @@ export default function BRDManagementPage() {
                   <td className="px-4 py-4">
                     <p className="font-semibold text-slate-800 leading-snug">{brd.request_title}</p>
                     <p className="mt-0.5 font-mono text-[10px] text-slate-400">{brd.req_number}</p>
+                  </td>
+
+                  {/* Task / Request Status */}
+                  <td className="px-4 py-4">
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${REQUEST_STATUS_COLORS[brd.request_status] ?? "bg-slate-100 text-slate-500 border-slate-200"}`}>
+                      {brd.request_status || "—"}
+                    </span>
                   </td>
 
                   {/* Category */}
