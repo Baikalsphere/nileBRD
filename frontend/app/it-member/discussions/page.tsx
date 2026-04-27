@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Clock, Flame, Loader2, MessageSquare, TrendingUp, Zap, Search } from "lucide-react";
 import { RequestChat } from "@/components/chat/RequestChat";
+import { ensureAuth, getUserMeta } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -22,9 +23,6 @@ interface DiscussionRequest {
   last_message_at: string | null;
 }
 
-function decodeToken(token: string) {
-  try { return JSON.parse(atob(token.split(".")[1])); } catch { return null; }
-}
 
 const priorityDot: Record<string, string> = {
   Low: "bg-emerald-400", Medium: "bg-amber-400", High: "bg-orange-500", Critical: "bg-rose-500",
@@ -69,15 +67,15 @@ export default function ITMemberDiscussionsPage() {
   const [currentUser, setCurrentUser] = useState<{ id: number; email: string; name: string; role: string } | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (!token) return;
-    const decoded = decodeToken(token);
-    if (decoded) setCurrentUser({ id: decoded.id, email: decoded.email, name: decoded.name || decoded.email, role: decoded.role || "it_member" });
+    const meta = getUserMeta();
+    if (meta) setCurrentUser({ id: meta.id, email: meta.email, name: meta.name || meta.email, role: meta.role || "it_member" });
 
-    fetch(`${API}/api/discussions/requests`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => { setRequests(d.requests || []); setLoading(false); })
-      .catch(() => setLoading(false));
+    ensureAuth().then(token => {
+      fetch(`${API}/api/discussions/requests`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => { setRequests(d.requests || []); setLoading(false); })
+        .catch(() => setLoading(false));
+    });
   }, []);
 
   const filtered = useMemo(() => {

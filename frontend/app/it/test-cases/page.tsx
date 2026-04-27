@@ -8,6 +8,7 @@ import {
   BarChart3, Save, TrendingUp, Hash, ListFilter,
 } from "lucide-react";
 import { downloadTestCasesAsPDF } from "@/lib/pdfExport";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5001";
 
@@ -76,23 +77,23 @@ function SITTab({ doc, onReleased }: { doc: TcListItem; onReleased: () => void }
   const [search, setSearch]     = useState("");
   const [saveMsg, setSaveMsg]   = useState<{ text: string; ok: boolean } | null>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
-
   const fetchSit = useCallback(async () => {
     setLoading(true);
     try {
+      const token = await ensureAuth();
       const r = await fetch(`${API}/api/testing/sit/${doc.id}`, { headers: { Authorization: `Bearer ${token}` } });
       const d: SitState = await r.json();
       setSit(d);
       setLocalStatuses(Object.fromEntries(d.sit_cases.map(tc => [tc.id, d.results[tc.id] ?? { status: "Pending", remarks: "" }])));
     } finally { setLoading(false); }
-  }, [doc.id, token]);
+  }, [doc.id]);
 
   useEffect(() => { fetchSit(); }, [fetchSit]);
 
   const saveAll = async () => {
     setSaving(true); setSaveMsg(null);
     try {
+      const token = await ensureAuth();
       const updates = Object.entries(localStatuses).map(([test_case_id, v]) => ({ test_case_id, ...v }));
       const r = await fetch(`${API}/api/testing/sit/${doc.id}`, {
         method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -106,6 +107,7 @@ function SITTab({ doc, onReleased }: { doc: TcListItem; onReleased: () => void }
   const releaseForUAT = async () => {
     setReleasing(true);
     try {
+      const token = await ensureAuth();
       const r = await fetch(`${API}/api/testing/sit/${doc.id}/release`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) { const d = await r.json(); alert(d.message); return; }
       await fetchSit(); onReleased(); setConfirmRelease(false);
@@ -408,16 +410,16 @@ export default function TestCasesPage() {
   const [selectedDoc, setSelectedDoc] = useState<TcListItem | null>(null);
   const [refreshKey, setRefreshKey]   = useState(0);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("authToken") : null;
-
   useEffect(() => {
     setLoading(true);
-    fetch(`${API}/api/stream/test-case-documents`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => setDocs(Array.isArray(d) ? d : []))
-      .catch(() => setDocs([]))
-      .finally(() => setLoading(false));
-  }, [refreshKey, token]);
+    ensureAuth().then(token => {
+      fetch(`${API}/api/stream/test-case-documents`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.json())
+        .then(d => setDocs(Array.isArray(d) ? d : []))
+        .catch(() => setDocs([]))
+        .finally(() => setLoading(false));
+    });
+  }, [refreshKey]);
 
   const filtered = docs.filter(d => {
     const q = search.toLowerCase();

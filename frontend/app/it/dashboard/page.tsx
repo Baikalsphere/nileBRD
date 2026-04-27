@@ -10,6 +10,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
+import { ensureAuth, getUserMeta } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:5001";
 
@@ -72,20 +73,18 @@ export default function ITDashboardPage() {
   const [userName, setUserName] = useState("IT Manager");
 
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (!token) return;
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      if (payload.name) setUserName(payload.name.split(" ")[0]);
-    } catch {}
+    const meta = getUserMeta();
+    if (meta?.name) setUserName(meta.name.split(" ")[0]);
 
-    fetch(`${API}/api/stream/it-dashboard-stats`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.json())
-      .then(d => setStats(d))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    ensureAuth().then(token => {
+      fetch(`${API}/api/stream/it-dashboard-stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then(r => r.json())
+        .then(d => setStats(d))
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    });
   }, []);
 
   if (loading) {

@@ -312,7 +312,7 @@ export default function AdminPanel() {
     setRefreshing(false);
   };
 
-  const handleAdminLogin = async (e: React.FormEvent) => {
+  const handleAdminLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     setLoading(true);
@@ -338,7 +338,7 @@ export default function AdminPanel() {
     }
   };
 
-  const handleCreateUser = async (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setCreateError("");
     setCreatingUser(true);

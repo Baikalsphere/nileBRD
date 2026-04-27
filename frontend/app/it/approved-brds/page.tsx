@@ -8,6 +8,7 @@ import {
   Crown, Search, Filter, ArrowUpRight, Info, Wand2, ArrowRight,
 } from "lucide-react";
 import { buildPdfHtml, type BrdDoc } from "@/lib/brdPdf";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5001";
 
@@ -257,7 +258,7 @@ export default function ApprovedBrdsPage() {
   const fetchBrds = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/approved-brds`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -272,7 +273,7 @@ export default function ApprovedBrdsPage() {
   const generateFrd = useCallback(async (brd: ApprovedBrd) => {
     setGeneratingFrdId(brd.id);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/stream/brd-documents/${brd.id}/generate-frd`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },

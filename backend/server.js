@@ -3,6 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
 import requestRoutes from "./routes/requests.js";
@@ -33,6 +34,7 @@ initChat(io);
 
 // Middleware
 app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(cookieParser());
 app.use(express.json());
 
 // Routes

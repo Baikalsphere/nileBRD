@@ -1414,4 +1414,86 @@ router.post("/daily/rooms", authenticateToken, async (req, res) => {
   }
 });
 
+// GET /api/stream/it-member-dashboard — aggregated stats for IT member dashboard
+router.get("/it-member-dashboard", authenticateToken, async (req, res) => {
+  if (!["it", "it_member"].includes(req.user.role))
+    return res.status(403).json({ message: "IT role required" });
+
+  try {
+    const [sitResults, sitTotal, uatStats, defectStats, deployStats, recentSit] = await Promise.all([
+      // SIT: count by status from persisted results
+      pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN status = 'Pass'        THEN 1 END), 0)::int AS passed,
+          COALESCE(SUM(CASE WHEN status = 'Fail'        THEN 1 END), 0)::int AS failed,
+          COALESCE(SUM(CASE WHEN status = 'In Progress' THEN 1 END), 0)::int AS in_progress
+        FROM sit_test_results
+      `),
+      // Total SIT cases from JSONB across all tc_documents
+      pool.query(`
+        SELECT COUNT(*)::int AS total
+        FROM test_case_documents tc,
+             jsonb_array_elements(tc.content->'test_cases') AS tc_case
+        WHERE tc_case->>'type' IN ('System','Integration','Performance','Security')
+      `),
+      // UAT assignments by status
+      pool.query(`
+        SELECT
+          COALESCE(SUM(CASE WHEN status = 'Pass'        THEN 1 END), 0)::int AS passed,
+          COALESCE(SUM(CASE WHEN status = 'Fail'        THEN 1 END), 0)::int AS failed,
+          COALESCE(SUM(CASE WHEN status = 'In Progress' THEN 1 END), 0)::int AS in_progress,
+          COALESCE(SUM(CASE WHEN status = 'Pending'     THEN 1 END), 0)::int AS pending,
+          COUNT(*)::int AS total
+        FROM uat_assignments
+      `),
+      // Open defects (not resolved or closed)
+      pool.query(`
+        SELECT COUNT(*)::int AS open_count
+        FROM production_defects
+        WHERE status NOT IN ('Resolved','Closed')
+      `),
+      // Latest deployment status per environment
+      pool.query(`
+        SELECT DISTINCT ON (environment)
+               environment, status, updated_at
+        FROM deployments
+        ORDER BY environment, updated_at DESC
+      `),
+      // 5 most recently updated SIT cases with title from JSONB
+      pool.query(`
+        SELECT str.test_case_id, str.status, str.updated_at,
+          (SELECT elem->>'title'
+           FROM jsonb_array_elements(tcd.content->'test_cases') AS elem
+           WHERE elem->>'id' = str.test_case_id
+           LIMIT 1) AS title
+        FROM sit_test_results str
+        JOIN test_case_documents tcd ON tcd.id = str.tc_document_id
+        ORDER BY str.updated_at DESC
+        LIMIT 5
+      `),
+    ]);
+
+    const total   = sitTotal.rows[0].total;
+    const passed  = sitResults.rows[0].passed;
+    const failed  = sitResults.rows[0].failed;
+    const inProg  = sitResults.rows[0].in_progress;
+    const pending = Math.max(0, total - passed - failed - inProg);
+    const sitRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+
+    const uatRow  = uatStats.rows[0];
+    const uatRate = uatRow.total > 0 ? Math.round((uatRow.passed / uatRow.total) * 100) : 0;
+
+    res.json({
+      sit: { total, passed, failed, in_progress: inProg, pending, pass_rate: sitRate },
+      uat: { ...uatRow, pass_rate: uatRate },
+      open_defects: defectStats.rows[0].open_count,
+      deployments:  deployStats.rows,
+      recent_sit:   recentSit.rows,
+    });
+  } catch (err) {
+    console.error("IT member dashboard error:", err);
+    res.status(500).json({ message: "Failed to fetch dashboard data" });
+  }
+});
+
 export default router;

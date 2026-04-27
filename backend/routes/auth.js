@@ -9,7 +9,6 @@ router.post("/signup", async (req, res) => {
   try {
     const { email, password, role } = req.body;
 
-    // Validate input
     if (!email || !password || !role) {
       return res.status(400).json({ message: "Missing required fields" });
     }
@@ -40,7 +39,6 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Validate input
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password required" });
     }

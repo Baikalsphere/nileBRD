@@ -23,6 +23,7 @@ import {
 
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ensureAuth } from "@/lib/authGuard";
 
 type Priority = "Low" | "Medium" | "High" | "Critical";
 type Category = "Process Improvement" | "System Issue" | "New Feature" | "Compliance" | "Cost Reduction" | "Other";
@@ -113,7 +114,7 @@ export default function SubmitProblemPage() {
   const loadBaList = async () => {
     setBaListLoading(true);
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const res = await fetch(`${API}/api/requests/ba-list`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) { const data = await res.json(); setBaList(data.bas); }
     } catch {}
@@ -134,7 +135,7 @@ export default function SubmitProblemPage() {
     setIsSubmitting(true);
     setSubmitError("");
     try {
-      const token = localStorage.getItem("authToken");
+      const token = await ensureAuth();
       const fd = new FormData();
       fd.append("title", form.title);
       fd.append("description", form.description);

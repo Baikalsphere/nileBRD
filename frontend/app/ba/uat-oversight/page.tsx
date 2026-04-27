@@ -10,11 +10,12 @@ import {
   SortAsc, SortDesc, Check, Square, Minus, Tag, Calendar,
   BarChart3, Eye, EyeOff,
 } from "lucide-react";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-function authHeader(): Record<string, string> {
-  const t = localStorage.getItem("authToken");
+async function authHeader(): Promise<Record<string, string>> {
+  const t = await ensureAuth();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
@@ -142,8 +143,9 @@ function DocList({ onSelect }: { onSelect: (doc: TcDocSummary) => void }) {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetch(`${API}/api/testing/uat/documents`, { headers: authHeader() })
-      .then(r => r.json())
+    authHeader().then(headers =>
+      fetch(`${API}/api/testing/uat/documents`, { headers })
+    ).then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
           setDocs(data.map(d => ({
@@ -339,7 +341,7 @@ function UATCasesTable({
     for (const tcId of selectedRows) {
       await fetch(`${API}/api/testing/uat/${docId}/assign`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
         body: JSON.stringify({ test_case_id: tcId, stakeholder_id: bulkStakeholder }),
       });
     }
@@ -637,7 +639,7 @@ function AssignDropdown({ tc, caseAsgns, stakeholders, docId, onAssign, onRemove
     setLoading(shId);
     await fetch(`${API}/api/testing/uat/${docId}/assign`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...authHeader() },
+      headers: { "Content-Type": "application/json", ...await authHeader() },
       body: JSON.stringify({ test_case_id: tc.id, stakeholder_id: shId }),
     });
     setLoading(null);
@@ -807,13 +809,13 @@ function UATOversightDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => 
 
   const showMsg = (m: string) => { setMsg(m); setTimeout(() => setMsg(""), 3500); };
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true);
     Promise.all([
-      fetch(`${API}/api/testing/uat/${doc.id}`, { headers: authHeader() }).then(r => r.json()),
-      fetch(`${API}/api/testing/stakeholders`, { headers: authHeader() }).then(r => r.json()),
-      fetch(`${API}/api/deployments/release/${doc.request_id}`, { headers: authHeader() }).then(r => r.json()),
-      fetch(`${API}/api/deployments/defects/${doc.request_id}`, { headers: authHeader() }).then(r => r.json()),
+      fetch(`${API}/api/testing/uat/${doc.id}`, { headers: await authHeader() }).then(r => r.json()),
+      fetch(`${API}/api/testing/stakeholders`, { headers: await authHeader() }).then(r => r.json()),
+      fetch(`${API}/api/deployments/release/${doc.request_id}`, { headers: await authHeader() }).then(r => r.json()),
+      fetch(`${API}/api/deployments/defects/${doc.request_id}`, { headers: await authHeader() }).then(r => r.json()),
     ]).then(([uatData, shData, releaseData, defectData]) => {
       if (uatData.uat_cases) {
         setData(uatData);
@@ -831,7 +833,7 @@ function UATOversightDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => 
   const saveThreshold = async () => {
     const r = await fetch(`${API}/api/testing/uat/${doc.id}/config`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeader() },
+      headers: { "Content-Type": "application/json", ...await authHeader() },
       body: JSON.stringify({ pass_threshold: newThreshold }),
     });
     if (r.ok) { setThresholdEdit(false); load(); }
@@ -844,7 +846,7 @@ function UATOversightDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => 
     try {
       const r = await fetch(`${API}/api/testing/approvals/${data.approval.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
         body: JSON.stringify({ action, comment: approvalComment || null }),
       });
       const d = await r.json();
@@ -858,7 +860,7 @@ function UATOversightDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => 
     try {
       const r = await fetch(`${API}/api/deployments/release/${doc.request_id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
       });
       const d = await r.json();
       if (r.ok) { load(); showMsg("Production release marked completed"); }
@@ -871,7 +873,7 @@ function UATOversightDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => 
     try {
       const r = await fetch(`${API}/api/deployments/defects/${defectId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
         body: JSON.stringify({ status }),
       });
       if (r.ok) { load(); showMsg("Defect updated"); }
@@ -1019,7 +1021,7 @@ function UATOversightDetail({ doc, onBack }: { doc: TcDocSummary; onBack: () => 
             requestId={doc.request_id}
             onAssign={load}
             onRemove={async id => {
-              await fetch(`${API}/api/testing/uat/assignments/${id}`, { method: "DELETE", headers: authHeader() });
+              await fetch(`${API}/api/testing/uat/assignments/${id}`, { method: "DELETE", headers: await authHeader() });
               load();
             }}
             threshold={threshold}

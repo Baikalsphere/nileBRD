@@ -6,11 +6,12 @@ import {
   ChevronDown, ChevronUp, RefreshCw, MonitorPlay, PenLine,
   Bug, Send, Plus,
 } from "lucide-react";
+import { ensureAuth } from "@/lib/authGuard";
 
 const API = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-function authHeader(): Record<string, string> {
-  const t = localStorage.getItem("authToken");
+async function authHeader(): Promise<Record<string, string>> {
+  const t = await ensureAuth();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
@@ -79,9 +80,9 @@ export default function UATTestingPage() {
   const [submittingDefect, setSubmittingDefect] = useState(false);
   const [defectMsg, setDefectMsg] = useState("");
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true);
-    fetch(`${API}/api/testing/uat/my-cases`, { headers: authHeader() })
+    fetch(`${API}/api/testing/uat/my-cases`, { headers: await authHeader() })
       .then(r => r.json())
       .then(data => {
         if (Array.isArray(data)) {
@@ -112,7 +113,7 @@ export default function UATTestingPage() {
     try {
       const r = await fetch(`${API}/api/testing/uat/assignments/${c.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
         body: JSON.stringify({
           status,
           remarks: localRemarks[c.id] ?? "",
@@ -138,7 +139,7 @@ export default function UATTestingPage() {
     try {
       const r = await fetch(`${API}/api/testing/uat/assignments/${c.id}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
         body: JSON.stringify({
           remarks: localRemarks[c.id] ?? "",
           manual_notes: localNotes[c.id] ?? "",
@@ -160,7 +161,7 @@ export default function UATTestingPage() {
     try {
       const r = await fetch(`${API}/api/deployments/defects`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeader() },
+        headers: { "Content-Type": "application/json", ...await authHeader() },
         body: JSON.stringify({
           request_id: defectModal.requestId,
           title: defectForm.title,

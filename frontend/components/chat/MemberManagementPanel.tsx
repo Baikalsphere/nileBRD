@@ -58,22 +58,25 @@ export function MemberManagementPanel({ requestId, onClose }: Props) {
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const token = () => localStorage.getItem("authToken");
-
   useEffect(() => {
-    const t = token();
-    Promise.all([
-      fetch(`${API}/api/stream/channels/${requestId}/members`, {
-        headers: { Authorization: `Bearer ${t}` },
-      }).then(r => r.json()),
-      fetch(`${API}/api/stream/users`, {
-        headers: { Authorization: `Bearer ${t}` },
-      }).then(r => r.json()),
-    ]).then(([membersData, usersData]) => {
-      setMembers(membersData.members || []);
-      setAllUsers(usersData.users || []);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    let cancelled = false;
+    import("@/lib/authGuard").then(({ ensureAuth }) => ensureAuth()).then(t => {
+      if (cancelled) return;
+      Promise.all([
+        fetch(`${API}/api/stream/channels/${requestId}/members`, {
+          headers: { Authorization: `Bearer ${t}` },
+        }).then(r => r.json()),
+        fetch(`${API}/api/stream/users`, {
+          headers: { Authorization: `Bearer ${t}` },
+        }).then(r => r.json()),
+      ]).then(([membersData, usersData]) => {
+        if (cancelled) return;
+        setMembers(membersData.members || []);
+        setAllUsers(usersData.users || []);
+        setLoading(false);
+      }).catch(() => { if (!cancelled) setLoading(false); });
+    });
+    return () => { cancelled = true; };
   }, [requestId]);
 
   const memberIds = useMemo(() => new Set(members.map(m => m.id)), [members]);
@@ -89,11 +92,13 @@ export function MemberManagementPanel({ requestId, onClose }: Props) {
   }, [allUsers, memberIds, search]);
 
   const addMember = async (user: User, streamRole: "moderator" | "member") => {
+    const { ensureAuth } = await import("@/lib/authGuard");
+    const t = await ensureAuth();
     setAddingId(user.id);
     await fetch(`${API}/api/stream/channels/${requestId}/members`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token()}`,
+        Authorization: `Bearer ${t}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ userId: user.id, role: streamRole }),
@@ -103,10 +108,12 @@ export function MemberManagementPanel({ requestId, onClose }: Props) {
   };
 
   const removeMember = async (userId: number) => {
+    const { ensureAuth } = await import("@/lib/authGuard");
+    const t = await ensureAuth();
     setRemovingId(userId);
     await fetch(`${API}/api/stream/channels/${requestId}/members/${userId}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${token()}` },
+      headers: { Authorization: `Bearer ${t}` },
     });
     setMembers(prev => prev.filter(m => m.id !== userId));
     setRemovingId(null);
