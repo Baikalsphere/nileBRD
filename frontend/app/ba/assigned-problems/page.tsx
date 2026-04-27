@@ -279,15 +279,15 @@ export default function AssignedRequestsPage() {
           <table className="w-full text-sm border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Req #</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400">Title</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Priority</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden lg:table-cell">Category</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden md:table-cell">Stakeholder</th>
-                <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden xl:table-cell">Submitted</th>
-                <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Docs</th>
-                <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Actions</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Req #</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400">Title</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Priority</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden lg:table-cell">Stakeholder</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden xl:table-cell">Category</th>
+                <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden 2xl:table-cell">Submitted</th>
+                <th className="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Docs</th>
+                <th className="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -300,54 +300,54 @@ export default function AssignedRequestsPage() {
                     className={`border-b border-slate-100 hover:bg-indigo-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
                   >
                     {/* Req number */}
-                    <td className="px-4 py-3.5 whitespace-nowrap">
+                    <td className="px-3 py-3 whitespace-nowrap">
                       <span className="font-mono text-xs font-bold text-indigo-500 bg-indigo-50 rounded-md px-2 py-1">
                         {request.req_number}
                       </span>
                     </td>
 
                     {/* Title */}
-                    <td className="px-4 py-3.5 max-w-[280px]">
+                    <td className="px-3 py-3 max-w-[220px]">
                       <p className="text-sm font-semibold text-slate-800 truncate" title={request.title}>
                         {request.title}
                       </p>
                     </td>
 
                     {/* Priority */}
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
                         {p.icon}{request.priority}
                       </span>
                     </td>
 
                     {/* Status */}
-                    <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${sc.color} ${sc.bg}`}>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${sc.color} ${sc.bg}`}>
                         {request.status}
                       </span>
                     </td>
 
-                    {/* Category */}
-                    <td className="px-4 py-3.5 hidden lg:table-cell">
-                      <span className="text-xs text-slate-500">{request.category}</span>
-                    </td>
-
                     {/* Stakeholder */}
-                    <td className="px-4 py-3.5 hidden md:table-cell whitespace-nowrap">
-                      <span className="text-xs text-slate-500">
+                    <td className="px-3 py-3 hidden lg:table-cell max-w-[130px]">
+                      <span className="block truncate text-xs text-slate-500" title={request.stakeholder_name || request.stakeholder_email}>
                         {request.stakeholder_name || request.stakeholder_email.split("@")[0]}
                       </span>
                     </td>
 
+                    {/* Category */}
+                    <td className="px-3 py-3 hidden xl:table-cell max-w-[130px]">
+                      <span className="block truncate text-xs text-slate-500" title={request.category}>{request.category}</span>
+                    </td>
+
                     {/* Date */}
-                    <td className="px-4 py-3.5 hidden xl:table-cell whitespace-nowrap">
+                    <td className="px-3 py-3 hidden 2xl:table-cell whitespace-nowrap">
                       <span className="text-xs text-slate-400">
                         {new Date(request.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                       </span>
                     </td>
 
                     {/* Attachments */}
-                    <td className="px-4 py-3.5 text-center">
+                    <td className="px-3 py-3 text-center">
                       {request.attachments.length > 0 ? (
                         <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
                           <Paperclip className="size-3" />{request.attachments.length}
@@ -358,18 +358,18 @@ export default function AssignedRequestsPage() {
                     </td>
 
                     {/* Actions */}
-                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => { setSelectedRequest(request); setDetailsOpen(true); }}
-                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
                         >
                           <Eye className="size-3.5 text-slate-400" />
                           Details
                         </button>
                         <button
                           onClick={() => openDiscussion(request, userId, userName)}
-                          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-100"
+                          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-100"
                         >
                           <MessageSquare className="size-3.5" />
                           Discuss

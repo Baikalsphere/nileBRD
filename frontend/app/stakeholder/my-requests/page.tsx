@@ -463,18 +463,17 @@ function RequestsTable({
     <table className="w-full text-sm border-collapse">
       <thead>
         <tr className="border-b border-slate-200 bg-slate-50">
-          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Req #</th>
-          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400">Title</th>
-          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Priority</th>
-          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
+          <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Req #</th>
+          <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400">Title</th>
+          <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Priority</th>
+          <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
           {showSubmitter
-            ? <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden md:table-cell">Submitted By</th>
-            : <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden md:table-cell">Assigned BA</th>
+            ? <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden lg:table-cell">Submitted By</th>
+            : <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden lg:table-cell">Assigned BA</th>
           }
-          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden lg:table-cell">Category</th>
-          <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden xl:table-cell">Date</th>
-          <th className="px-4 py-3 text-center text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Docs</th>
-          <th className="px-4 py-3 text-right text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Actions</th>
+          <th className="px-3 py-3 text-left text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap hidden xl:table-cell">Category</th>
+          <th className="px-3 py-3 text-center text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Docs</th>
+          <th className="px-3 py-3 text-right text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -487,58 +486,51 @@ function RequestsTable({
               className={`border-b border-slate-100 hover:bg-indigo-50/40 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"}`}
             >
               {/* Req number */}
-              <td className="px-4 py-3.5 whitespace-nowrap">
+              <td className="px-3 py-3 whitespace-nowrap">
                 <span className="font-mono text-xs font-bold text-indigo-500 bg-indigo-50 rounded-md px-2 py-1">
                   {req.req_number}
                 </span>
               </td>
 
               {/* Title */}
-              <td className="px-4 py-3.5 max-w-[240px]">
+              <td className="px-3 py-3 max-w-[200px]">
                 <p className="text-sm font-semibold text-slate-800 truncate" title={req.title}>{req.title}</p>
               </td>
 
               {/* Priority */}
-              <td className="px-4 py-3.5 whitespace-nowrap">
-                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
+              <td className="px-3 py-3 whitespace-nowrap">
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${p.color} ${p.bg} ${p.border}`}>
                   {p.icon}{req.priority}
                 </span>
               </td>
 
               {/* Status */}
-              <td className="px-4 py-3.5 whitespace-nowrap">
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${sc.color} ${sc.bg}`}>
+              <td className="px-3 py-3 whitespace-nowrap">
+                <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${sc.color} ${sc.bg}`}>
                   {req.status}
                 </span>
               </td>
 
               {/* BA / Submitter */}
-              <td className="px-4 py-3.5 hidden md:table-cell whitespace-nowrap">
+              <td className="px-3 py-3 hidden lg:table-cell max-w-[130px]">
                 {showSubmitter ? (
-                  <span className="text-xs text-slate-500">
+                  <span className="block truncate text-xs text-slate-500">
                     {req.stakeholder_name || req.stakeholder_email?.split("@")[0] || "—"}
                   </span>
                 ) : (
-                  <span className={`text-xs font-semibold ${req.ba_name || req.ba_email ? "text-indigo-700" : "text-amber-500 italic"}`}>
-                    {req.ba_name || req.ba_email || "Awaiting assignment"}
+                  <span className={`block truncate text-xs font-semibold ${req.ba_name || req.ba_email ? "text-indigo-700" : "text-amber-500 italic"}`}>
+                    {req.ba_name || req.ba_email || "Awaiting"}
                   </span>
                 )}
               </td>
 
               {/* Category */}
-              <td className="px-4 py-3.5 hidden lg:table-cell">
-                <span className="text-xs text-slate-500">{req.category}</span>
-              </td>
-
-              {/* Date */}
-              <td className="px-4 py-3.5 hidden xl:table-cell whitespace-nowrap">
-                <span className="text-xs text-slate-400">
-                  {new Date(req.created_at).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
-                </span>
+              <td className="px-3 py-3 hidden xl:table-cell max-w-[130px]">
+                <span className="block truncate text-xs text-slate-500" title={req.category}>{req.category}</span>
               </td>
 
               {/* Attachments */}
-              <td className="px-4 py-3.5 text-center">
+              <td className="px-3 py-3 text-center">
                 {req.attachments.length > 0 ? (
                   <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500">
                     <Paperclip className="size-3" />{req.attachments.length}
@@ -549,18 +541,18 @@ function RequestsTable({
               </td>
 
               {/* Actions */}
-              <td className="px-4 py-3.5 text-right whitespace-nowrap">
+              <td className="px-3 py-3 text-right whitespace-nowrap">
                 <div className="flex items-center justify-end gap-1.5">
                   <button
                     onClick={() => onDetails(req)}
-                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:border-slate-300 transition-all"
                   >
                     <Eye className="size-3.5 text-slate-400" />
                     Details
                   </button>
                   <button
                     onClick={() => onDiscussion(req)}
-                    className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-100"
+                    className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-all shadow-sm shadow-indigo-100"
                   >
                     <MessageSquare className="size-3.5" />
                     Discuss
@@ -568,17 +560,16 @@ function RequestsTable({
                   {onAttach && (
                     <button
                       onClick={() => onAttach(req)}
-                      className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-all shadow-sm"
+                      className="flex size-[28px] shrink-0 items-center justify-center rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all"
                       title="Attach Files"
                     >
                       <Paperclip className="size-3.5" />
-                      Attach
                     </button>
                   )}
                   {onReassign && !showSubmitter && (req.ba_name || req.ba_email) && (
                     <button
                       onClick={() => onReassign(req)}
-                      className="flex size-[30px] shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 hover:bg-amber-200 transition-all"
+                      className="flex size-[28px] shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 hover:bg-amber-200 transition-all"
                       title="Reassign BA"
                     >
                       <UserCheck className="size-3.5" />
