@@ -93,8 +93,10 @@ function WorkflowTracker({ status }: { status: string }) {
   );
 }
 
-function DetailsModal({ request, isOpen, onClose, onAttach }: { request: RequestItem | null; isOpen: boolean; onClose: () => void; onAttach?: () => void }) {
+function DetailsModal({ request, isOpen, onClose, onAttach, onDeleted }: { request: RequestItem | null; isOpen: boolean; onClose: () => void; onAttach?: () => void; onDeleted?: () => void }) {
   const [downloading, setDownloading] = useState<number | null>(null);
+  const [deleting, setDeleting]       = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
   if (!isOpen || !request) return null;
 
@@ -112,6 +114,20 @@ function DetailsModal({ request, isOpen, onClose, onAttach }: { request: Request
       a.click();
       URL.revokeObjectURL(url);
     } catch { /* ignore */ } finally { setDownloading(null); }
+  };
+
+  const deleteAttachment = async (att: Attachment) => {
+    setDeleting(att.id);
+    try {
+      const token = await ensureAuth();
+      const res = await fetch(`${API}/api/requests/attachment/${att.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed");
+      setConfirmDelete(null);
+      onDeleted?.();
+    } catch { /* ignore */ } finally { setDeleting(null); }
   };
 
   return (
@@ -174,24 +190,58 @@ function DetailsModal({ request, isOpen, onClose, onAttach }: { request: Request
               </p>
               <div className="space-y-2">
                 {request.attachments.map((att) => (
-                  <div key={att.id} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 hover:border-indigo-200 hover:bg-indigo-50/30 transition-colors">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100">
-                        <Paperclip className="size-4 text-indigo-600" />
+                  <div key={att.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden transition-colors hover:border-slate-300">
+                    <div className="flex items-center justify-between px-4 py-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-indigo-100">
+                          <Paperclip className="size-4 text-indigo-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-slate-800">{att.original_name}</p>
+                          <p className="text-xs text-slate-400">{formatSize(att.size)}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-800">{att.original_name}</p>
-                        <p className="text-xs text-slate-400">{formatSize(att.size)}</p>
+                      <div className="ml-3 flex shrink-0 items-center gap-2">
+                        <button
+                          onClick={() => downloadAttachment(att)}
+                          disabled={downloading === att.id}
+                          className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                        >
+                          {downloading === att.id ? <RefreshCw className="size-3 animate-spin" /> : <Download className="size-3" />}
+                          {downloading === att.id ? "…" : "Download"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(confirmDelete === att.id ? null : att.id)}
+                          className="flex size-[30px] shrink-0 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-500 hover:bg-rose-100 transition-colors"
+                          title="Delete attachment"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                          </svg>
+                        </button>
                       </div>
                     </div>
-                    <button
-                      onClick={() => downloadAttachment(att)}
-                      disabled={downloading === att.id}
-                      className="ml-3 flex shrink-0 items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 px-3.5 py-2 text-xs font-semibold text-white transition-colors"
-                    >
-                      {downloading === att.id ? <RefreshCw className="size-3 animate-spin" /> : <Download className="size-3" />}
-                      {downloading === att.id ? "Downloading…" : "Download"}
-                    </button>
+                    {confirmDelete === att.id && (
+                      <div className="flex items-center justify-between border-t border-rose-100 bg-rose-50 px-4 py-2.5 gap-3">
+                        <p className="text-xs text-rose-700 font-medium">Delete this file permanently?</p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setConfirmDelete(null)}
+                            className="px-3 py-1 rounded-lg border border-slate-200 text-xs font-medium text-slate-600 hover:bg-white transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => deleteAttachment(att)}
+                            disabled={deleting === att.id}
+                            className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-xs font-semibold text-white transition-colors"
+                          >
+                            {deleting === att.id ? <RefreshCw className="size-3 animate-spin" /> : null}
+                            {deleting === att.id ? "Deleting…" : "Yes, delete"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -748,6 +798,7 @@ export default function MyRequestsPage() {
         isOpen={detailsOpen}
         onClose={() => setDetailsOpen(false)}
         onAttach={handleAttachFromDetails}
+        onDeleted={handleRefresh}
       />
 
       {/* Attach files modal */}
