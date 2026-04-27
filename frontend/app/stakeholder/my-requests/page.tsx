@@ -94,9 +94,14 @@ function WorkflowTracker({ status }: { status: string }) {
 }
 
 function DetailsModal({ request, isOpen, onClose, onAttach, onDeleted }: { request: RequestItem | null; isOpen: boolean; onClose: () => void; onAttach?: () => void; onDeleted?: () => void }) {
-  const [downloading, setDownloading] = useState<number | null>(null);
-  const [deleting, setDeleting]       = useState<number | null>(null);
+  const [downloading, setDownloading]     = useState<number | null>(null);
+  const [deleting, setDeleting]           = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [localAttachments, setLocalAttachments] = useState<Attachment[]>([]);
+
+  useEffect(() => {
+    if (request) setLocalAttachments(request.attachments);
+  }, [request]);
 
   if (!isOpen || !request) return null;
 
@@ -126,6 +131,7 @@ function DetailsModal({ request, isOpen, onClose, onAttach, onDeleted }: { reque
       });
       if (!res.ok) throw new Error("Failed");
       setConfirmDelete(null);
+      setLocalAttachments(prev => prev.filter(a => a.id !== att.id));
       onDeleted?.();
     } catch { /* ignore */ } finally { setDeleting(null); }
   };
@@ -183,13 +189,13 @@ function DetailsModal({ request, isOpen, onClose, onAttach, onDeleted }: { reque
           </div>
 
           {/* Attachments */}
-          {request.attachments.length > 0 && (
+          {localAttachments.length > 0 && (
             <div>
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                Attachments ({request.attachments.length})
+                Attachments ({localAttachments.length})
               </p>
               <div className="space-y-2">
-                {request.attachments.map((att) => (
+                {localAttachments.map((att) => (
                   <div key={att.id} className="rounded-xl border border-slate-200 bg-white overflow-hidden transition-colors hover:border-slate-300">
                     <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-3 min-w-0">
