@@ -522,6 +522,30 @@ router.post("/:id/attachments", authenticateToken, upload.array("attachments", 1
   }
 });
 
+// DELETE /api/requests/attachment/:id — stakeholder deletes their own attachment
+router.delete("/attachment/:id", authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT a.id, a.s3_key, r.stakeholder_id
+       FROM request_attachments a JOIN requests r ON r.id = a.request_id
+       WHERE a.id = $1`,
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Attachment not found" });
+    if (rows[0].stakeholder_id !== req.user.id) {
+      return res.status(403).json({ message: "Not your attachment" });
+    }
+
+    await deleteFile(rows[0].s3_key);
+    await pool.query("DELETE FROM request_attachments WHERE id = $1", [req.params.id]);
+
+    res.json({ message: "Attachment deleted" });
+  } catch (error) {
+    console.error("Delete attachment error:", error);
+    res.status(500).json({ message: "Error deleting attachment" });
+  }
+});
+
 // GET /api/requests/attachment/:id — streams the file directly from local storage
 router.get("/attachment/:id", authenticateToken, async (req, res) => {
   try {
