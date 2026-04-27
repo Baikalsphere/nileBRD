@@ -68,73 +68,155 @@ function detectSections(text) {
   return sections.filter((s) => s.content.length > 80);
 }
 
+// ─── Text quality helpers ─────────────────────────────────────────────────────
+
+/**
+ * Clean extracted text: normalize encodings, remove garbage chars, preserve structure.
+ * Unlike a simple /\s+/ collapse, this keeps newlines so paragraph structure survives.
+ */
+function cleanExtractedText(text) {
+  return text
+    .replace(/\x00/g, "")                               // null bytes
+    .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, " ") // control chars (keep \t \n \r)
+    // Common Unicode → ASCII normalisation
+    .replace(/ﬀ/g, "ff").replace(/ﬁ/g, "fi").replace(/ﬂ/g, "fl")
+    .replace(/ﬃ/g, "ffi").replace(/ﬄ/g, "ffl")
+    .replace(/[‘’‚‛]/g, "'")
+    .replace(/[“”„‟]/g, '"')
+    .replace(/–/g, "-").replace(/—/g, "--")
+    .replace(/•|‣|◦|⁃/g, "*")        // bullets
+    .replace(/…/g, "...").replace(/ /g, " ")   // ellipsis, nbsp
+    // Strip chars outside printable ASCII + Latin Extended
+    .replace(/[^\x09\x0A\x0D\x20-\x7E -ɏ]/g, " ")
+    // Collapse horizontal whitespace only (preserve \n)
+    .replace(/[ \t]+/g, " ")
+    // Normalise line endings and collapse excess blank lines
+    .replace(/\r\n?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Ratio of readable prose characters (letters, digits, punctuation, spaces).
+ * A score below ~0.55 indicates garbage encoding rather than real text.
+ */
+function readabilityScore(text) {
+  if (!text || text.length < 20) return 0;
+  const readable = (text.match(/[a-zA-Z0-9 \t\n.,;:!?'"()\-]/g) || []).length;
+  return readable / text.length;
+}
+
 // ─── PDF extraction ───────────────────────────────────────────────────────────
 
 async function extractPdfText(buffer) {
+  let pdfParseText = "";
+  let pdfPages = null;
+
   try {
     const pdfParse = require("pdf-parse/lib/pdf-parse.js");
     const data = await pdfParse(buffer, { max: 0 }); // max:0 = all pages
-    const text = (data.text || "").replace(/\s+/g, " ").trim();
-    if (text.length > 50) return { text, pages: data.numpages || null };
+    pdfParseText = cleanExtractedText(data.text || "");
+    pdfPages = data.numpages || null;
   } catch {
-    // pdf-parse failed — fall through to regex fallback
+    // pdf-parse failed — will try regex fallback
   }
 
-  // Regex fallback: scan BT/ET operators for readable strings
+  // Use pdf-parse result only if it passes the readability bar
+  if (pdfParseText.length > 100 && readabilityScore(pdfParseText) >= 0.55) {
+    return { text: pdfParseText, pages: pdfPages };
+  }
+
+  // ── Regex fallback: extract strings directly from PDF content streams ──────
   const raw = buffer.toString("latin1");
   const chunks = [];
 
+  // Walk each BT…ET text block (PDF text operators)
   const btEt = /BT\s*([\s\S]*?)\s*ET/g;
   let m;
   while ((m = btEt.exec(raw)) !== null) {
-    const strRe = /\(([^)]{1,300})\)/g;
+    const block = m[1];
+
+    // Literal strings: (text)
+    const litRe = /\(([^)]{1,400})\)/g;
     let sm;
-    while ((sm = strRe.exec(m[1])) !== null) {
+    while ((sm = litRe.exec(block)) !== null) {
       const t = sm[1]
-        .replace(/\\n/g, " ")
-        .replace(/\\r/g, "")
-        .replace(/[^\x20-\x7E]/g, "")
+        .replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\\t/g, " ")
+        .replace(/\\(.)/g, "$1")                // unescape \x sequences
+        .replace(/[^\x20-\x7E\n]/g, "")
         .trim();
-      if (t.length > 3) chunks.push(t);
+      if (t.length > 2) chunks.push(t);
+    }
+
+    // Hex strings: <4865 6C6C6F> — common when font encoding breaks literals
+    const hexRe = /<([0-9A-Fa-f\s]{4,})>/g;
+    let hm;
+    while ((hm = hexRe.exec(block)) !== null) {
+      const hex = hm[1].replace(/\s/g, "");
+      let decoded = "";
+      for (let i = 0; i + 1 < hex.length; i += 2) {
+        const code = parseInt(hex.slice(i, i + 2), 16);
+        if (code >= 0x20 && code <= 0x7E) decoded += String.fromCharCode(code);
+      }
+      if (decoded.length > 2) chunks.push(decoded);
     }
   }
 
-  if (chunks.length < 5) {
-    const asciiRe = /[ -~]{6,}/g;
+  // Last resort: scan for long ASCII runs anywhere in the file
+  if (chunks.length < 10) {
+    const asciiRe = /[ -~]{8,}/g;
     let am;
     const seen = new Set();
     while ((am = asciiRe.exec(raw)) !== null) {
       const t = am[0].trim();
-      if (t.length > 8 && !seen.has(t)) {
+      if (t.length > 10 && !seen.has(t) && readabilityScore(t) > 0.7) {
         seen.add(t);
         chunks.push(t);
       }
     }
   }
 
-  const text = chunks.join(" ").replace(/\s+/g, " ").trim();
-  return { text, pages: null };
+  const fallbackText = chunks.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return { text: fallbackText, pages: pdfPages };
 }
 
 // ─── DOCX extraction ──────────────────────────────────────────────────────────
 
+function decodeXmlEntities(s) {
+  return s
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+}
+
 function extractDocxText(buffer) {
   // Read up to 20MB of raw XML (covers very large DOCX files)
   const raw = buffer.toString("utf-8", 0, Math.min(buffer.length, 20 * 1024 * 1024));
-  const textRe = /<w:t[^>]*>([\s\S]*?)<\/w:t>/g;
-  const parts = [];
-  let m;
-  while ((m = textRe.exec(raw)) !== null) {
-    const t = m[1]
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&amp;/g, "&")
-      .replace(/&quot;/g, '"')
-      .replace(/&apos;/g, "'")
-      .trim();
-    if (t.length > 1) parts.push(t);
+  const paragraphs = [];
+  let i = 0;
+
+  // Walk paragraph by paragraph to preserve newline structure
+  while (i < raw.length) {
+    const pStart = raw.indexOf("<w:p", i);
+    if (pStart === -1) break;
+
+    const pEnd = raw.indexOf("</w:p>", pStart);
+    if (pEnd === -1) break;
+
+    const paraXml = raw.slice(pStart, pEnd + 6);
+    const parts = [];
+    const textRe = /<w:t[^>]*>([\s\S]*?)<\/w:t>/g;
+    let m;
+    while ((m = textRe.exec(paraXml)) !== null) {
+      const t = decodeXmlEntities(m[1]).trim();
+      if (t) parts.push(t);
+    }
+
+    if (parts.length) paragraphs.push(parts.join(" "));
+
+    i = pEnd + 6;
   }
-  return parts.join(" ").replace(/\s+/g, " ").trim();
+
+  return paragraphs.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -166,7 +248,7 @@ export async function getRequestDocumentContext(requestId) {
       const buf = await fs.readFile(getFilePath(att.s3_key));
 
       if (mime.includes("text/plain") || name.endsWith(".txt") || name.endsWith(".csv")) {
-        text = buf.toString("utf-8");
+        text = cleanExtractedText(buf.toString("utf-8"));
         pagesEstimated = Math.ceil(text.length / 2000);
       } else if (mime.includes("pdf") || name.endsWith(".pdf")) {
         const result = await extractPdfText(buf);
