@@ -1826,16 +1826,16 @@ export function StreamChatPanel({ request, currentUser, onBack }: Props) {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 onClick={() => { setShowKeyPoints(v => !v); setShowMembers(false); setAnalysis(null); }}
-                className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition-all ${
+                className={`flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-bold transition-all shadow-sm ${
                   showKeyPoints
-                    ? "border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 text-amber-700 shadow-sm shadow-amber-100"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700"
+                    ? "border-amber-500 bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-amber-200"
+                    : "border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 text-amber-700 hover:from-amber-100 hover:to-orange-100 hover:border-amber-400 shadow-amber-100"
                 }`}
               >
-                <Sparkles className={`size-4 ${showKeyPoints ? "text-amber-500" : "text-slate-400"}`} />
+                <Sparkles className={`size-4 ${showKeyPoints ? "text-white" : "text-amber-500"}`} />
                 Key Points
                 {importantMessages.length > 0 && (
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${showKeyPoints ? "bg-amber-200 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${showKeyPoints ? "bg-white/30 text-white" : "bg-amber-200 text-amber-800"}`}>
                     {importantMessages.length}
                   </span>
                 )}
