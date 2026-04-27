@@ -7,6 +7,7 @@ import { checkCompleteness, generateScope, generateWorkflow } from "../services/
 import { getRequestDocumentContext, formatDocumentContext } from "../services/documentParser.js";
 import { analyzeDocumentsForBRD, formatDocumentAnalysisForContext } from "../services/documentAnalysisService.js";
 import { generateFRD } from "../services/frdGenerator.js";
+import { checkFrdReadiness, defineTechnicalScope, defineSystemArchitecture } from "../services/frdStagedService.js";
 import { generateTestCases } from "../services/testCaseGenerator.js";
 import {
   upsertStreamUser,
@@ -716,7 +717,7 @@ router.get("/brd-documents", authenticateToken, async (req, res) => {
     if (req.user.role !== "ba") return res.status(403).json({ message: "BA only" });
     const { rows } = await pool.query(
       `SELECT bd.id, bd.doc_id, bd.version, bd.status, bd.generated_at, bd.updated_at,
-              r.id AS request_id, r.title AS request_title, r.req_number, r.priority, r.category,
+              r.id AS request_id, r.title AS request_title, r.req_number, r.priority, r.category, r.status AS request_status,
               bd.content->'meta'->>'source_messages' AS source_messages,
               COUNT(br.id) FILTER (WHERE br.status = 'pending')           AS reviews_pending,
               COUNT(br.id) FILTER (WHERE br.status = 'approved')          AS reviews_approved,
@@ -1177,6 +1178,63 @@ router.get("/approved-brds", authenticateToken, async (req, res) => {
 
 // ── FRD Routes ────────────────────────────────────────────────────────────────
 
+// ── FRD Staged Pre-checks (IT only) ──────────────────────────────────────────
+
+// POST /api/stream/brd-documents/:brdId/frd-stage-1 — BRD readiness check
+router.post("/brd-documents/:brdId/frd-stage-1", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    const { rows } = await pool.query(
+      `SELECT bd.content FROM brd_documents bd
+       WHERE bd.id = $1 AND bd.status IN ('Approved', 'Final')`,
+      [req.params.brdId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "BRD not found or not yet approved" });
+    const result = await checkFrdReadiness(rows[0].content);
+    res.json(result);
+  } catch (err) {
+    console.error("FRD stage 1 error:", err);
+    res.status(500).json({ message: "Stage 1 failed", detail: err.message });
+  }
+});
+
+// POST /api/stream/brd-documents/:brdId/frd-stage-2 — technical scope definition
+router.post("/brd-documents/:brdId/frd-stage-2", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    const { rows } = await pool.query(
+      `SELECT bd.content FROM brd_documents bd
+       WHERE bd.id = $1 AND bd.status IN ('Approved', 'Final')`,
+      [req.params.brdId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "BRD not found or not yet approved" });
+    const result = await defineTechnicalScope(rows[0].content);
+    res.json(result);
+  } catch (err) {
+    console.error("FRD stage 2 error:", err);
+    res.status(500).json({ message: "Stage 2 failed", detail: err.message });
+  }
+});
+
+// POST /api/stream/brd-documents/:brdId/frd-stage-3 — system architecture overview
+router.post("/brd-documents/:brdId/frd-stage-3", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });
+    const { approvedScope } = req.body;
+    const { rows } = await pool.query(
+      `SELECT bd.content FROM brd_documents bd
+       WHERE bd.id = $1 AND bd.status IN ('Approved', 'Final')`,
+      [req.params.brdId]
+    );
+    if (!rows.length) return res.status(404).json({ message: "BRD not found or not yet approved" });
+    const result = await defineSystemArchitecture(rows[0].content, approvedScope || null);
+    res.json(result);
+  } catch (err) {
+    console.error("FRD stage 3 error:", err);
+    res.status(500).json({ message: "Stage 3 failed", detail: err.message });
+  }
+});
+
 // POST /api/stream/brd-documents/:brdId/generate-frd — IT generates FRD from approved/final BRD
 router.post("/brd-documents/:brdId/generate-frd", authenticateToken, async (req, res) => {
   try {
@@ -1256,7 +1314,7 @@ router.get("/frd-documents", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /api/stream/frd-documents/:frdId — get full FRD
+// GET /api/stream/frd-documents/:frdId — get full FRD (IT only)
 router.get("/frd-documents/:frdId", authenticateToken, async (req, res) => {
   try {
     if (req.user.role !== "it") return res.status(403).json({ message: "IT only" });

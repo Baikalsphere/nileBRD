@@ -5,7 +5,7 @@ import { ensureAuth } from "@/lib/authGuard";
 import {
   FileText, CheckCircle2, XCircle, Clock, MessageSquare,
   ThumbsUp, AlertCircle, Loader2, ChevronRight, Sparkles,
-  ExternalLink, RefreshCw, Printer,
+  ExternalLink, RefreshCw, Printer, Maximize2, X,
 } from "lucide-react";
 import { buildPdfHtml, type BrdDoc } from "@/lib/brdPdf";
 
@@ -48,6 +48,9 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
   const [openingPdf, setOpeningPdf] = useState(false);
   const [comment, setComment] = useState("");
   const [myAction, setMyAction] = useState<"approve" | "changes" | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerHtml, setViewerHtml] = useState<string | null>(null);
+  const [loadingViewer, setLoadingViewer] = useState(false);
 
   const isBA = currentUser.role === "ba";
 
@@ -119,6 +122,22 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
     }
   };
 
+  const handleOpenViewer = async () => {
+    setLoadingViewer(true);
+    setViewerOpen(true);
+    try {
+      const token = await ensureAuth();
+      const res = await fetch(`${API}/api/stream/brd-documents/${attachment.brd_id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) { setViewerOpen(false); return; }
+      const doc: BrdDoc = await res.json();
+      setViewerHtml(buildPdfHtml(doc));
+    } finally {
+      setLoadingViewer(false);
+    }
+  };
+
   const enhanceBrd = async () => {
     setEnhancing(true);
     try {
@@ -161,6 +180,14 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
             )}
           </div>
         </div>
+        <button
+          onClick={handleOpenViewer}
+          disabled={loadingViewer}
+          title="View BRD fullscreen"
+          className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-500 hover:bg-indigo-100 hover:text-indigo-700 transition-colors disabled:opacity-50"
+        >
+          {loadingViewer ? <Loader2 className="size-3.5 animate-spin" /> : <Maximize2 className="size-3.5" />}
+        </button>
         <button
           onClick={handleOpenPdf}
           disabled={openingPdf}
@@ -399,6 +426,60 @@ export function BrdReviewCard({ attachment, currentUser }: Props) {
           </div>
         )}
       </div>
+
+      {/* ── Fullscreen BRD Viewer ── */}
+      {viewerOpen && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-white">
+          {/* Toolbar */}
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 py-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600">
+                <FileText className="size-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-800">{attachment.title}</p>
+                <p className="font-mono text-[10px] text-slate-400">{attachment.doc_id} · v{attachment.version}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleOpenPdf}
+                disabled={openingPdf}
+                className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                {openingPdf ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+                Print / PDF
+              </button>
+              <button
+                onClick={() => { setViewerOpen(false); setViewerHtml(null); }}
+                className="flex size-8 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-hidden">
+            {loadingViewer ? (
+              <div className="flex h-full items-center justify-center gap-3 text-slate-400">
+                <Loader2 className="size-5 animate-spin" />
+                <span className="text-sm font-medium">Loading BRD…</span>
+              </div>
+            ) : viewerHtml ? (
+              <iframe
+                srcDoc={viewerHtml}
+                className="h-full w-full border-0"
+                title="BRD Document"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                Failed to load BRD document.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

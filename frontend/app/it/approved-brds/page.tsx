@@ -3,9 +3,11 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   FileCheck2, RefreshCw, Loader2, ChevronDown, ChevronUp,
-  FileText, Calendar, User, Tag, BarChart3, CheckCircle2,
+  FileText, BarChart3, CheckCircle2,
   XCircle, ShieldAlert, ClipboardList, BookOpen, Printer,
-  Crown, Search, Filter, ArrowUpRight, Info, Wand2, ArrowRight,
+  Crown, Search, Filter, Info, Wand2, ArrowRight,
+  X, AlertTriangle, ChevronRight, AlertCircle, GitBranch,
+  Database, Layers, CheckCheck, ArrowLeft,
 } from "lucide-react";
 import { buildPdfHtml, type BrdDoc } from "@/lib/brdPdf";
 import { ensureAuth } from "@/lib/authGuard";
@@ -245,15 +247,475 @@ function ExpandedBrdDetail({ brd }: { brd: ApprovedBrd }) {
   );
 }
 
+// ── FRD Staged Modal ──────────────────────────────────────────────────────────
+
+type Stage1Result = {
+  score: number;
+  readiness_level: string;
+  summary: string;
+  strengths: string[];
+  gaps: string[];
+  technical_questions: string[];
+  recommendation: string;
+};
+
+type Stage2Result = {
+  summary: string;
+  in_scope_components: { component: string; rationale: string }[];
+  out_of_scope_components: { component: string; rationale: string }[];
+  integration_points: { system: string; type: string; description: string }[];
+  data_domains: string[];
+  ambiguities: string[];
+};
+
+type Stage3Result = {
+  summary: string;
+  system_modules: { name: string; responsibility: string; brd_refs: string[] }[];
+  data_flow: { step: number; from: string; to: string; description: string }[];
+  api_contracts: { endpoint: string; purpose: string; consumed_by: string }[];
+  technology_constraints: string[];
+  open_decisions: string[];
+};
+
+const STAGE_LABELS = ["BRD Readiness", "Technical Scope", "Architecture", "Generate FRD"];
+
+function StageBar({ current }: { current: number }) {
+  return (
+    <div className="flex items-center gap-0 px-6 py-4 border-b border-slate-100">
+      {STAGE_LABELS.map((label, i) => {
+        const done    = i < current;
+        const active  = i === current;
+        const locked  = i > current;
+        return (
+          <div key={label} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center gap-1">
+              <div className={`flex size-7 items-center justify-center rounded-full text-[11px] font-bold border-2 transition-all ${
+                done   ? "bg-emerald-500 border-emerald-500 text-white" :
+                active ? "bg-violet-600 border-violet-600 text-white" :
+                         "bg-white border-slate-200 text-slate-400"
+              }`}>
+                {done ? <CheckCheck className="size-3.5" /> : i + 1}
+              </div>
+              <span className={`text-[9px] font-semibold whitespace-nowrap ${
+                active ? "text-violet-600" : done ? "text-emerald-600" : "text-slate-400"
+              }`}>{label}</span>
+            </div>
+            {i < STAGE_LABELS.length - 1 && (
+              <div className={`flex-1 h-0.5 mb-4 mx-1 ${done ? "bg-emerald-400" : "bg-slate-100"}`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function FrdStagedModal({ brd, onClose, onGenerated }: {
+  brd: ApprovedBrd;
+  onClose: () => void;
+  onGenerated: (docId: string) => void;
+}) {
+  const [stage, setStage]           = useState(0);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [stage1, setStage1]         = useState<Stage1Result | null>(null);
+  const [stage2, setStage2]         = useState<Stage2Result | null>(null);
+  const [stage3, setStage3]         = useState<Stage3Result | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  const call = useCallback(async (path: string, body?: object) => {
+    const token = await ensureAuth();
+    const res = await fetch(`${API}/api/stream/brd-documents/${brd.id}/${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || "Request failed");
+    return data;
+  }, [brd.id]);
+
+  const runStage1 = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const data = await call("frd-stage-1");
+      setStage1(data);
+      setStage(1);
+    } catch (e) { setError(e instanceof Error ? e.message : "Stage 1 failed"); }
+    finally { setLoading(false); }
+  }, [call]);
+
+  const runStage2 = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const data = await call("frd-stage-2");
+      setStage2(data);
+      setStage(2);
+    } catch (e) { setError(e instanceof Error ? e.message : "Stage 2 failed"); }
+    finally { setLoading(false); }
+  }, [call]);
+
+  const runStage3 = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const data = await call("frd-stage-3", { approvedScope: stage2 });
+      setStage3(data);
+      setStage(3);
+    } catch (e) { setError(e instanceof Error ? e.message : "Stage 3 failed"); }
+    finally { setLoading(false); }
+  }, [call, stage2]);
+
+  const runGenerate = useCallback(async () => {
+    setGenerating(true); setError(null);
+    try {
+      const token = await ensureAuth();
+      const res = await fetch(`${API}/api/stream/brd-documents/${brd.id}/generate-frd`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Generation failed");
+      onGenerated(data.meta?.doc_id ?? "");
+    } catch (e) { setError(e instanceof Error ? e.message : "Generation failed"); }
+    finally { setGenerating(false); }
+  }, [brd.id, onGenerated]);
+
+  const scoreColor = stage1
+    ? stage1.score >= 75 ? "text-emerald-600" : stage1.score >= 50 ? "text-amber-600" : "text-rose-600"
+    : "";
+  const scoreBg = stage1
+    ? stage1.score >= 75 ? "bg-emerald-50 border-emerald-200" : stage1.score >= 50 ? "bg-amber-50 border-amber-200" : "bg-rose-50 border-rose-200"
+    : "";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex h-full max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+
+        {/* Top accent */}
+        <div className="h-1 w-full bg-gradient-to-r from-violet-500 to-indigo-500 shrink-0" />
+
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between px-6 pt-4 pb-3">
+          <div>
+            <p className="text-base font-bold text-slate-800">Generate FRD</p>
+            <p className="text-[11px] text-slate-400">{brd.doc_id} · {brd.request_title}</p>
+          </div>
+          <button onClick={onClose} className="flex size-8 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:bg-slate-100">
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Stage bar */}
+        <StageBar current={stage} />
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+
+          {error && (
+            <div className="flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+              <AlertCircle className="size-4 shrink-0 text-rose-500" />
+              <p className="text-sm text-rose-700">{error}</p>
+            </div>
+          )}
+
+          {/* Stage 0 — kick off */}
+          {stage === 0 && !loading && (
+            <div className="flex flex-col items-center gap-4 py-8 text-center">
+              <div className="flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-200">
+                <Layers className="size-8 text-white" />
+              </div>
+              <div>
+                <p className="text-base font-bold text-slate-800">3-Stage FRD Pre-check</p>
+                <p className="mt-1 text-sm text-slate-500 max-w-sm leading-relaxed">
+                  Before generating the FRD, the AI will run 3 checks — readiness, technical scope, and architecture — for your review.
+                </p>
+              </div>
+              <div className="mt-2 grid grid-cols-3 gap-3 w-full text-left">
+                {[
+                  { icon: <CheckCircle2 className="size-4 text-violet-500" />, label: "Stage 1", desc: "BRD Readiness Check" },
+                  { icon: <GitBranch   className="size-4 text-violet-500" />, label: "Stage 2", desc: "Technical Scope" },
+                  { icon: <Database    className="size-4 text-violet-500" />, label: "Stage 3", desc: "System Architecture" },
+                ].map(s => (
+                  <div key={s.label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    {s.icon}
+                    <p className="text-[10px] font-bold text-slate-500 uppercase mt-2">{s.label}</p>
+                    <p className="text-xs font-semibold text-slate-700 mt-0.5">{s.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {loading && (
+            <div className="flex flex-col items-center gap-3 py-12">
+              <Loader2 className="size-7 animate-spin text-violet-500" />
+              <p className="text-sm text-slate-500">
+                {stage === 0 ? "Running BRD readiness check…" :
+                 stage === 1 ? "Defining technical scope…" :
+                               "Generating architecture overview…"}
+              </p>
+            </div>
+          )}
+
+          {/* Stage 1 result */}
+          {stage === 1 && stage1 && !loading && (
+            <div className="space-y-4">
+              <div className={`flex items-center gap-4 rounded-2xl border p-4 ${scoreBg}`}>
+                <div className="shrink-0 text-center">
+                  <p className={`text-4xl font-black ${scoreColor}`}>{stage1.score}</p>
+                  <p className="text-[10px] text-slate-500">/ 100</p>
+                </div>
+                <div>
+                  <p className={`text-sm font-bold ${scoreColor}`}>{stage1.readiness_level}</p>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">{stage1.summary}</p>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-2">Strengths</p>
+                  <ul className="space-y-1.5">
+                    {stage1.strengths.map((s, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-slate-700">
+                        <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500 mt-0.5" />{s}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-2">Gaps</p>
+                  <ul className="space-y-1.5">
+                    {stage1.gaps.map((g, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-slate-700">
+                        <AlertTriangle className="size-3.5 shrink-0 text-amber-500 mt-0.5" />{g}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {stage1.technical_questions.length > 0 && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-2">Questions to Consider</p>
+                  <ul className="space-y-1.5">
+                    {stage1.technical_questions.map((q, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-slate-700">
+                        <span className="size-4 flex shrink-0 items-center justify-center rounded-full bg-blue-200 text-blue-700 font-bold text-[9px]">{i+1}</span>{q}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${
+                stage1.recommendation === "Proceed"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  : stage1.recommendation === "Proceed with caution"
+                  ? "border-amber-200 bg-amber-50 text-amber-700"
+                  : "border-rose-200 bg-rose-50 text-rose-700"
+              }`}>
+                <Info className="size-3.5 shrink-0" />
+                Recommendation: {stage1.recommendation}
+              </div>
+            </div>
+          )}
+
+          {/* Stage 2 result */}
+          {stage === 2 && stage2 && !loading && (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600 leading-relaxed">{stage2.summary}</p>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-2">In-Scope Components</p>
+                  <ul className="space-y-2">
+                    {stage2.in_scope_components.map((c, i) => (
+                      <li key={i}>
+                        <p className="text-xs font-semibold text-slate-800">{c.component}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{c.rationale}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-rose-100 bg-rose-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-rose-600 mb-2">Out-of-Scope</p>
+                  <ul className="space-y-2">
+                    {stage2.out_of_scope_components.map((c, i) => (
+                      <li key={i}>
+                        <p className="text-xs font-semibold text-slate-800">{c.component}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{c.rationale}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {stage2.integration_points.length > 0 && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600 mb-2">Integration Points</p>
+                  <div className="space-y-2">
+                    {stage2.integration_points.map((ip, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="rounded-full bg-blue-200 px-2 py-0.5 text-[9px] font-bold text-blue-700 shrink-0">{ip.type}</span>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-800">{ip.system}</p>
+                          <p className="text-[10px] text-slate-500">{ip.description}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stage2.data_domains.length > 0 && (
+                <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-2">Data Domains</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {stage2.data_domains.map((d, i) => (
+                      <span key={i} className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-700">{d}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stage2.ambiguities.length > 0 && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-2">Ambiguities</p>
+                  <ul className="space-y-1">
+                    {stage2.ambiguities.map((a, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-slate-700">
+                        <AlertTriangle className="size-3.5 shrink-0 text-amber-500 mt-0.5" />{a}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Stage 3 result */}
+          {stage === 3 && stage3 && !loading && (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-600 leading-relaxed">{stage3.summary}</p>
+
+              {stage3.system_modules.length > 0 && (
+                <div className="rounded-xl border border-violet-100 bg-violet-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-violet-600 mb-2">System Modules</p>
+                  <div className="space-y-2">
+                    {stage3.system_modules.map((m, i) => (
+                      <div key={i} className="rounded-lg bg-white border border-violet-100 px-3 py-2">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-xs font-bold text-slate-800">{m.name}</p>
+                          <div className="flex gap-1">
+                            {m.brd_refs.map(r => <span key={r} className="rounded bg-violet-100 px-1.5 text-[9px] font-bold text-violet-600">{r}</span>)}
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-slate-500">{m.responsibility}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stage3.data_flow.length > 0 && (
+                <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-sky-600 mb-2">Data Flow</p>
+                  <ol className="space-y-1.5">
+                    {stage3.data_flow.map((f, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-slate-700 items-start">
+                        <span className="size-4 flex shrink-0 items-center justify-center rounded-full bg-sky-200 text-sky-700 font-bold text-[9px]">{f.step}</span>
+                        <span><span className="font-semibold">{f.from}</span> → <span className="font-semibold">{f.to}</span>: {f.description}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {stage3.api_contracts.length > 0 && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600 mb-2">API Contracts</p>
+                  <div className="space-y-1.5">
+                    {stage3.api_contracts.map((a, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <code className="shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-mono text-indigo-700">{a.endpoint}</code>
+                        <p className="text-[10px] text-slate-600">{a.purpose} — <span className="text-slate-400">consumed by {a.consumed_by}</span></p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stage3.open_decisions.length > 0 && (
+                <div className="rounded-xl border border-amber-100 bg-amber-50/60 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-amber-600 mb-2">Open Decisions</p>
+                  <ul className="space-y-1">
+                    {stage3.open_decisions.map((d, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-slate-700">
+                        <AlertTriangle className="size-3.5 shrink-0 text-amber-500 mt-0.5" />{d}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="shrink-0 flex items-center justify-between border-t border-slate-100 px-6 py-4">
+          <button
+            onClick={onClose}
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <ArrowLeft className="size-4" /> Cancel
+          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Stage 0 → run stage 1 */}
+            {stage === 0 && !loading && (
+              <button onClick={runStage1} className="flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors">
+                Start Check <ChevronRight className="size-4" />
+              </button>
+            )}
+            {/* Stage 1 → approve, go to stage 2 */}
+            {stage === 1 && !loading && (
+              <button onClick={runStage2} className="flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors">
+                Approve & Define Scope <ChevronRight className="size-4" />
+              </button>
+            )}
+            {/* Stage 2 → approve, go to stage 3 */}
+            {stage === 2 && !loading && (
+              <button onClick={runStage3} className="flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-700 transition-colors">
+                Approve & Review Architecture <ChevronRight className="size-4" />
+              </button>
+            )}
+            {/* Stage 3 → generate */}
+            {stage === 3 && !loading && (
+              <button
+                onClick={runGenerate}
+                disabled={generating}
+                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-60"
+              >
+                {generating ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+                {generating ? "Generating FRD…" : "Generate FRD"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ApprovedBrdsPage() {
   const [brds, setBrds] = useState<ApprovedBrd[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "Approved" | "Final">("all");
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [pdfLoadingId, setPdfLoadingId]   = useState<number | null>(null);
-  const [generatingFrdId, setGeneratingFrdId] = useState<number | null>(null);
-  const [frdSuccess, setFrdSuccess]       = useState<string | null>(null);
+  const [pdfLoadingId, setPdfLoadingId] = useState<number | null>(null);
+  const [frdModalBrd, setFrdModalBrd]   = useState<ApprovedBrd | null>(null);
+  const [frdSuccess, setFrdSuccess]     = useState<string | null>(null);
 
   const fetchBrds = useCallback(async () => {
     setLoading(true);
@@ -270,19 +732,10 @@ export default function ApprovedBrdsPage() {
 
   useEffect(() => { fetchBrds(); }, [fetchBrds]);
 
-  const generateFrd = useCallback(async (brd: ApprovedBrd) => {
-    setGeneratingFrdId(brd.id);
-    try {
-      const token = await ensureAuth();
-      const res = await fetch(`${API}/api/stream/brd-documents/${brd.id}/generate-frd`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) { alert(data.message || "FRD generation failed"); return; }
-      setFrdSuccess(`FRD generated: ${data.meta?.doc_id ?? ""}. View it in FRD Management.`);
-      setTimeout(() => setFrdSuccess(null), 6000);
-    } finally { setGeneratingFrdId(null); }
+  const handleFrdGenerated = useCallback((docId: string) => {
+    setFrdModalBrd(null);
+    setFrdSuccess(`FRD generated: ${docId}. View it in FRD Management.`);
+    setTimeout(() => setFrdSuccess(null), 6000);
   }, []);
 
   const openPdf = useCallback((brd: ApprovedBrd) => {
@@ -518,14 +971,11 @@ export default function ApprovedBrdsPage() {
                           PDF
                         </button>
                         <button
-                          onClick={() => generateFrd(brd)}
-                          disabled={generatingFrdId === brd.id}
+                          onClick={() => setFrdModalBrd(brd)}
                           title="Generate FRD from this approved BRD"
-                          className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-colors disabled:opacity-50"
+                          className="flex items-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 transition-colors"
                         >
-                          {generatingFrdId === brd.id
-                            ? <Loader2 className="size-3.5 animate-spin" />
-                            : <Wand2 className="size-3.5" />}
+                          <Wand2 className="size-3.5" />
                           Generate FRD
                         </button>
                         <button
@@ -550,6 +1000,14 @@ export default function ApprovedBrdsPage() {
           </>
         )}
       </div>
+
+      {frdModalBrd && (
+        <FrdStagedModal
+          brd={frdModalBrd}
+          onClose={() => setFrdModalBrd(null)}
+          onGenerated={handleFrdGenerated}
+        />
+      )}
     </div>
   );
 }
